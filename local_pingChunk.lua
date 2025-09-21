@@ -1,3 +1,8 @@
+--[[
+Local Ping Chunk Script
+
+Made to only interact with PelletVisualizer (server)
+]]
 
 -- TODO: Testing Character, can delete later
 local RunService = game:GetService('RunService')
@@ -18,26 +23,29 @@ local numChunks = 0
 local currentChunk = "5050"
 
 -- Server
-local PelletVisualizer = workspace:WaitForChild('PelletVisualizer')
-local PingChunk = PelletVisualizer:WaitForChild('PingChunk')
+local PelletVisualizer = workspace:WaitForChild('PelletVisualizer') :: Script
+local PingChunk = PelletVisualizer:WaitForChild('PingChunk') :: RemoteEvent
+local PelletCollision = PelletVisualizer:WaitForChild('PelletCollision') :: RemoteEvent
 
--- Loop
-local heartbeatLoop = RunService.Heartbeat:Connect(function(deltaTime: number)
-	local ox = hr.Position.X - hr.Position.X%100 + chunkSize.X/2 
-	local oz = hr.Position.Z - hr.Position.Z%100 + chunkSize.Z/2
-	local hash = string.format("%d%d", ox, oz)	
+---- Loop
+--local heartbeatLoop = RunService.Heartbeat:Connect(function(deltaTime: number)
+--	local ox = hr.Position.X - hr.Position.X%100 + chunkSize.X/2 
+--	local oz = hr.Position.Z - hr.Position.Z%100 + chunkSize.Z/2
+--	local hash = string.format("%d%d", ox, oz)	
 	
-	if hash ~= currentChunk then
-		print(string.format("Local — PingChunk:FireServer(%s)", hash))
-		currentChunk = hash
-		PingChunk:FireServer(hash)
-	end
+--	if hash ~= currentChunk then
+--		print(string.format("Local — PingChunk:FireServer(%s)", hash))
+--		currentChunk = hash
+--		PingChunk:FireServer(hash)
+--	end
+--end)
+
+---- Humanoid Died — Disconnect Heartbeat
+--hum.Died:Connect(function()
+--	heartbeatLoop:Disconnect()
+--end)
+
+-- Receive Pellet collision event
+PelletCollision.OnClientEvent:Connect(function()
+	
 end)
-
--- Humanoid Died — Disconnect Heartbeat
-hum.Died:Connect(function()
-	heartbeatLoop:Disconnect()
-end)
-
-
--- 
