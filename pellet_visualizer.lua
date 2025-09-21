@@ -6,6 +6,7 @@ local jecs = require(ReplicatedStorage.jecs)
 local region = workspace:FindFirstChild('PelletRegion') :: Part
 local chunkSize = Vector3.new(100, 10, 100)
 local pelletSpacing = 10
+local pelletStartPos = 5
 local chunkTable = {}
 local numChunks = 0
 
@@ -17,7 +18,8 @@ local PingChunkRemote = script:WaitForChild('PingChunk') :: RemoteEvent
 local PelletCollision = script:WaitForChild('PelletCollision') :: RemoteEvent
 local collisionLoop = nil
 
--- Player Pellet Collections
+-- Player Pellet Collections and Jecs
+type Entity<T = nil> = jecs.Entity<T>
 
 
 function createPellet(region, px, pz)
@@ -38,7 +40,8 @@ function createPellet(region, px, pz)
 	light.Parent = pellet
 	
 	pellet.Parent = workspace
-	return pellet
+	local pelletPosition = pellet.Position
+	return pellet, pelletPosition
 end
 
 function createChunk(region, px, pz)
@@ -64,18 +67,32 @@ function createChunk(region, px, pz)
 	-- Create JECS World for Chunk
 	chunkTable[chunkHash].world = jecs.World.new() :: jecs.World
 	
+	-- TODO: Create components for the Chunk
+	-- Remember that each chunk has it's own component table
+	-- Since global component declaration is not possible in JECS
+	chunkTable[chunkHash].components = {}
+	chunkTable[chunkHash].components.Position = chunkTable[chunkHash].world:component() :: Entity<Vector3>
+	
 	print(string.format("%s = {%s}", chunkHash, chunkTable[chunkHash].chunk.Name))
 	return chunk, chunkHash
 end
 
-function spawnPelletsForChunk(chunk : Part)
+function spawnPelletsForChunk(chunk : Part, chunkHash : string)
 	local cx = chunkSize.X
 	local cz = chunkSize.Z
-	for x = 5, cx-1, pelletSpacing do -- chunk size X - 1, preveants inclusion of ending
-		for z = 5, cz-1, pelletSpacing do
+	local world = chunkTable[chunkHash].world
+	local components = chunkTable[chunkHash].components
+	local Position = components.Position
+	for x = pelletStartPos, cx-1, pelletSpacing do -- chunk size X - 1, preveants inclusion of ending
+		for z = pelletStartPos, cz-1, pelletSpacing do
 			local coordx = chunk.Position.X - cx/2 + x
 			local coordz = chunk.Position.Z - cz/2 + z
-			local pellet = createPellet(region, coordx, coordz)
+			local pellet, pelletPosition = createPellet(region, coordx, coordz)
+			
+			-- TODO: Created entity, now check entity position in collision loop
+			local entity = world:entity()
+			world:set(entity, Position, pelletPosition)
+			print('created', entity, 'in chunk: ', chunkHash)
 		end
 	end
 end
@@ -86,7 +103,7 @@ function spawnChunksForRegion(region : Part)
 			local coordx = x + chunkSize.X/2 - region.Size.X/2
 			local coordz = z + chunkSize.Z/2 - region.Size.Z/2
 			local chunk, chunkHash = createChunk(region, coordx, coordz)
-			spawnPelletsForChunk(chunk)
+			spawnPelletsForChunk(chunk, chunkHash)
 			--print( string.format("Created chunk at (%d, %d) -> x, z = (%d, %d)", coordx, coordz, x, z) )
 		end
 	end
@@ -123,8 +140,21 @@ Function: GetChunkHash()
 function GetChunkHash(hr)
 	local ox = hr.Position.X - hr.Position.X%100 + chunkSize.X/2 
 	local oz = hr.Position.Z - hr.Position.Z%100 + chunkSize.Z/2
-	local hash = string.format("%d%d", ox, oz)	
-	return hash
+	local hash = string.format("%d%d", ox, oz)
+	if chunkTable[hash] ~= nil then
+		return hash
+	end
+	return nil
+end
+
+function checkChunkCollisions(chunkHash, hr)
+	local world = chunkTable[chunkHash].world
+	local Position = chunkTable[chunkHash].components.Position
+	local hrPos = hr.Position
+	for id, pos: Vector3 in world:query(Position) do
+		local dist = (pos - hrPos).Magnitude
+		print(string.format("check: [%s] id=%d, dist=%d -> (%d, %d, %d)", chunkHash, id, dist, pos.X, pos.Y, pos.Z))
+	end
 end
 
 function CreateHeartbeatCollisionLoop()
@@ -145,8 +175,14 @@ function CreateHeartbeatCollisionLoop()
 			local hr = character:FindFirstChild('HumanoidRootPart')
 			if not hr then break end
 			
-			local hash = GetChunkHash(hr)
+			-- Find the chunk that player is in
+			local chunkHash = GetChunkHash(hr)
+			if chunkHash == nil then continue end
+			
+			checkChunkCollisions(chunkHash, hr)
 			print(string.format("hash collision loop: %s -> '%s'", player.Name, hash))
+			
+			
 		end
 	end)
 end
