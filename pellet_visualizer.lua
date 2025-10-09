@@ -1,13 +1,12 @@
-print("modulo result -50%100 = ", -50%100)
-print("modulo result -50%100 = ", 50%100)
-
-
 local ReplicatedStorage = game:GetService('ReplicatedStorage')
 local RunService = game:GetService('RunService')
 local Players = game:GetService('Players')
 local jecs = require(ReplicatedStorage.jecs)
 
 local region = workspace:FindFirstChild('PelletRegion') :: Part
+local regionOriginX = region.Position.X - region.Size.X/2
+local regionOriginZ = region.Position.Z - region.Size.Z/2
+
 local chunkSize = Vector3.new(100, 10, 100)
 local pelletSpacing = 20
 local pelletStartPos = 10
@@ -50,7 +49,7 @@ function generateHash(posx, posz)
 	return string.format("%d,%d", posx, posz)
 end
 
-function createChunk(region, px, pz)
+function createChunk(region, ix, iz)
 	numChunks += 1
 
 	local chunk = Instance.new('Part')
@@ -60,12 +59,19 @@ function createChunk(region, px, pz)
 	chunk.CanCollide = false
 	chunk.Transparency = 0.8
 	chunk.Color = Color3.new(1, 0, 0)
-	chunk.Position = Vector3.new(px, region.Position.Y + chunkSize.Y/2, pz)
+	
+	local originX = regionOriginX + ix*chunkSize.X
+	local originZ = regionOriginZ + iz*chunkSize.Z
+	local centerX = originX + chunkSize.X / 2
+	local centerZ = originZ + chunkSize.Z / 2
+	local centerYAboveRegion = region.Position.Y + chunkSize.Y/2
+	
+	chunk.Position = Vector3.new(centerX, centerYAboveRegion, centerZ)
 	chunk.Parent = workspace
-	print(string.format("Chunk %d position: (%d, %d)", numChunks, chunk.Position.X, chunk.Position.Z))
+	--print(string.format("Chunk %d position: (%d, %d)", numChunks, chunk.Position.X, chunk.Position.Z))
 
 	-- Create hash key for chunk based on stringified position
-	local chunkHash = generateHash(chunk.Position.X, chunk.Position.Z)
+	local chunkHash = generateHash(ix, iz)
 
 	-- Create dictionary for chunk information
 	chunkTable[chunkHash] = {chunk=chunk}
@@ -73,7 +79,7 @@ function createChunk(region, px, pz)
 	-- Create JECS World for Chunk
 	chunkTable[chunkHash].world = jecs.World.new() :: jecs.World
 
-	print(string.format("%s = {%s}", chunkHash, chunkTable[chunkHash].chunk.Name))
+	print(string.format("CHUNK HASH: [%s] = %s, (%d, y, %d)", chunkHash, chunkTable[chunkHash].chunk.Name, chunk.Position.X, chunk.Position.Z))
 	return chunk, chunkHash
 end
 
@@ -91,13 +97,19 @@ end
 
 -- TODO: Spawn chunks with consideration to region position offset
 function spawnChunksForRegion(region : Part)
-	for x = 0, region.Size.X-1, chunkSize.X do
-		for z = 0, region.Size.Z-1, chunkSize.Z do
-			local coordx = x + chunkSize.X/2 - region.Size.X/2
-			local coordz = z + chunkSize.Z/2 - region.Size.Z/2
-			local chunk, chunkHash = createChunk(region, coordx, coordz)
+	-- Root Origin for region part
+	--local regionOriginX = region.Position.X - region.Size.X/2
+	--local regionOriginZ = region.Position.Z - region.Size.Z/2
+	local numChunksX = math.ceil(region.Size.X / chunkSize.X)
+	local numChunksZ = math.ceil(region.Size.Z / chunkSize.Z)
+	
+	for ix = 0, numChunksX - 1 do
+		for iz = 0, numChunksZ - 1 do
+			--local cornerx = regionOriginX + x
+			--local cornerz = regionOriginZ + z
+			local chunk, chunkHash = createChunk(region, ix, iz)
 			spawnPelletsForChunk(chunk)
-			print( string.format("Created chunk [%s] at (%d, %d) -> x, z = (%d, %d)", chunkHash, coordx, coordz, x, z) )
+			print( string.format("Created chunk [%s] at (%d, %d)", chunkHash, ix, iz) )
 		end
 	end
 end
@@ -134,17 +146,19 @@ Function: GetChunkHash()
 	Return the hash according to the chunk sizes
 ]]
 
-local xoffset = (region.Size.X/2)%chunkSize.X
-local zoffset = (region.Size.Z/2)%chunkSize.Z
 
-print("x and z offset calc:", xoffset, zoffset)
-
+-- Uses: regionOriginX, regionOriginZ
 function GetChunkHash(hr)
-	local hx = hr.Position.X+xoffset
-	local hz = hr.Position.Z+zoffset
-	local ox = (hx - hx%(100) + chunkSize.X/2)-xoffset
-	local oz = (hz - hz%(100) + chunkSize.Z/2)-zoffset
-	local hash = generateHash(ox, oz)
+	local hx = hr.Position.X
+	local hz = hr.Position.Z
+	local localx = hx - regionOriginX
+	local localz = hz - regionOriginZ
+	
+	-- chunk indices (floor works correctly for negative world coords because we already used region-relative origin)
+	local ix = math.floor(localx / chunkSize.X)
+	local iz = math.floor(localz / chunkSize.Z)
+	
+	local hash = generateHash(ix, iz)
 	print(string.format('char pos: (%d, %d) hash: [%s]', hr.Position.X-hr.Position.X%10, hr.Position.Z-hr.Position.Z%10, hash))
 	return hash
 end
@@ -174,6 +188,25 @@ function CreateHeartbeatCollisionLoop()
 	end)
 end
 
+
+-- Chunk Clicker Code
+
+function createHighlight(target: Part)
+	local highlight = Instance.new('Highlight')
+	highlight.FillTransparency = 1
+	highlight.OutlineColor = Color3.new(0, 0, 1)
+	highlight.OutlineTransparency = 0
+	highlight.Adornee = target
+	game.Debris:AddItem(highlight, 2)
+	
+	return highlight
+end
+local ClickChunk = script:WaitForChild('ClickChunk') :: RemoteEvent
+ClickChunk.OnServerEvent:Connect(function(player: Player, targetChunk: Part)
+	if table.find(chunkTable, targetChunk) then return false end
+end)
+
+
 function init()
 	-- Spawn parts for visualizing chunks & pellets
 	spawnChunksForRegion(region)
@@ -190,5 +223,8 @@ function init()
 
 	CreateHeartbeatCollisionLoop() 
 end
+
+
+
 
 init()
