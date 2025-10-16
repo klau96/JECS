@@ -21,9 +21,14 @@ local Pellet = nil -- Entity Component world declarations
 local Position = nil 
 local ChunkHash = nil
 local Collected = nil
--- Later: Setup component declarations in SetupServerData()
+
+-- Data — Client-specific ECS Components
+local ServerEntityID = nil 
+-- Later: Component Declarations initialized in SetupServerData()
+
 local IncludePelletFilterParams = nil
--- Later in code: Set the FilteringDescendants to serverData.pelletFolder
+-- Later in code: FilteringDescendants initialized in SetupFilterParams()
+-- The main folder where all pellets go is workspace.Pellets
 
 
 -- Data Structure Declarations
@@ -33,6 +38,12 @@ local IncludePelletFilterParams = nil
 	
 	Both have a different 'serverData.world'
 	Same ECS system, but is initialized in each script
+	
+	Different Entity ID's
+		A pellet's data on the client / server ECS will have a different Entity ID
+		I stored the server pellet's Entity ID onto the ServerData given to the client upon InitializePellets
+		Then, I map it to the client' ServerData.pelletPositionLookup
+		
 ]]
 export type ServerData = {
 	chunkTable: {[string]: ChunkData},
@@ -46,6 +57,8 @@ export type ServerData = {
 	
 	-- Local Additions
 	pelletFolder: Folder,
+	pelletPositionLookup: {[string]: {number} }, -- [PositionHash]: {["ClientID"]}
+	pelletServerIDLookup: {[number]: string}
 }
 
 
@@ -61,21 +74,24 @@ export type PelletData = {
 	Position: Vector3,
 	Collected: boolean,
 	ChunkHash: string,
-	
+	ServerEntityID: number, -- Server ID
+
+	-- Client-Sided variables
 	PelletInstance: Part, -- Local Diff: To keep track of locally created pellet instances
+	ClientEntityID: number, -- Client ID on local ECS system
 }
 
 
 function createFolderForPellets()
 	local folder = Instance.new('Folder')
-	folder.Name = "Pellets"
+	folder.Name = "PelletsFolder"
 	folder.Parent = workspace
 	serverData.pelletFolder = folder
 	return folder
 end
 
 -- ECS System to handle the chunks of pellets, render and update them
-function createPellet(newPosition: Vector3, chunkHash: string)
+function createLocalPellet(newPosition: Vector3, chunkHash: string)
 	local pellet = Instance.new('Part')
 	pellet.Size = Vector3.new(1, 1, 1)
 	pellet.Material = Enum.Material.Neon
@@ -95,15 +111,16 @@ function createPellet(newPosition: Vector3, chunkHash: string)
 	light.Parent = pellet
 
 	-- Add to ECS
-	local pelletEntity = serverData.world:entity()
+	local pelletEntityID = serverData.world:entity() -- Returns the number of the entity
 	
-	serverData.world:set(pelletEntity, Pellet, true)
-	serverData.world:set(pelletEntity, Position, newPosition)
-	serverData.world:set(pelletEntity, Collected, false)
-	serverData.world:set(pelletEntity, ChunkHash, chunkHash)
+	serverData.world:set(pelletEntityID, Pellet, true)
+	serverData.world:set(pelletEntityID, Position, newPosition)
+	serverData.world:set(pelletEntityID, Collected, false)
+	serverData.world:set(pelletEntityID, ChunkHash, chunkHash)
 
-	pellet.Parent = serverData.pelletFolder
-	return pellet
+	pellet.Parent = serverData.pelletFolder 
+	print("createLocalPellet(): pelletEntity id = ", pelletEntityID)
+	return pellet, pelletEntityID
 end
 
 function generateHash(posx, posz)
@@ -127,10 +144,32 @@ function createChunk(chunkHash : string, chunkData : ChunkData)
 	serverData.chunkTable[chunkHash].chunk = chunk
 end
 
+function createPelletLookupData(pelletData : PelletData)
+	-- Create 2 hashes — Position, ServerEntityID
+	local positionHash = tostring(pelletData.Position)
+	local serverIDHash = tostring(pelletData.ServerEntityID)
+	
+	-- Set Position Lookup
+	-- 	Used for local, check for collided pellet in own ECS using ClientEntityID
+	--	Used from Client —> Server: inform server that pellet has been collected
+	serverData.pelletPositionLookup[positionHash] = {}
+	serverData.pelletPositionLookup[positionHash][1] = pelletData.ClientEntityID
+	serverData.pelletPositionLookup[positionHash][2] = pelletData.ServerEntityID -- Server Entity
+	
+	-- Set ServerEntityID Lookup
+	--	Used from Server —> Client: inform client that pellet has been collected by other player.
+	--	Then, checks Position Lookup, local client ECS World to remove pellet
+	serverData.pelletServerIDLookup[serverIDHash] = positionHash
+	
+	print('> Set', positionHash, ' to -> ', serverData.pelletPositionLookup[positionHash])
+end
+
 function spawnPelletsForChunk(chunkHash : string, chunkData : ChunkData)
 	for i, pelletData : PelletData in ipairs(chunkData.worldData) do -- chunk size X - 1, preveants inclusion of ending
-		local pellet = createPellet(pelletData.Position, chunkHash)
+		local pellet, clientEntityID = createLocalPellet(pelletData.Position, chunkHash)
 		pelletData.PelletInstance = pellet
+		pelletData.ClientEntityID = clientEntityID
+		createPelletLookupData(pelletData)
 	end
 end
 
@@ -174,16 +213,29 @@ function pelletDetectionLoop()
 		if hitPellets then
 			for i, item in pairs(hitPellets) do
 				print('detected: ', item, item.Position)
-
-				for id, pellet, pos : Vector3 in cache:iter() do
-					print('ECS LOOP: comparing ', id, pellet, '|', pos, '|', item.position)
-					if pos == item.Position then
-						print('DETECTED PELLET INSIDE ECS!')
-						serverData.world:remove(id)
-						game.Debris:AddItem(item, 0)
-						break
-					end
-				end
+				-- TODO: Implement hash lookup table for pellets
+				
+				-- Check if the positionHash leads to any valid entity ID's
+				local positionHash = tostring(item.Position)
+				local clientEntityID = serverData.pelletPositionLookup[positionHash][1]
+				if not clientEntityID then continue end
+				print('201 positionHash returned: entity ID = ', serverData.pelletPositionLookup[positionHash][1])
+				
+				-- Check if the entity ID leads to any valid entities
+				if not serverData.world:contains(clientEntityID) then continue end
+				print('201 entity id found in world:', serverData.world:get(clientEntityID, Position))
+				
+				
+				UpdatePellets:FireServer()
+				--for id, pellet, pos : Vector3 in cache:iter() do
+				--	print('ECS LOOP: comparing ', id, pellet, '|', pos, '|', item.position)
+				--	if pos == item.Position then
+				--		print('DETECTED PELLET INSIDE ECS!')
+				--		serverData.world:remove(id)
+				--		game.Debris:AddItem(item, 0)
+				--		break
+				--	end
+				--end
 			end
 			print('------')
 		end
@@ -201,10 +253,16 @@ end
 
 function SetupServerData()
 	serverData.world = jecs.world()
+	serverData.pelletPositionLookup = {}
+	
+	-- Initialize ECS Component Declarations 
 	Pellet = serverData.world:component() :: Entity<Part>
 	Position = serverData.world:component() :: Entity<Vector3>
 	ChunkHash = serverData.world:component() :: Entity<string>
 	Collected = serverData.world:component() :: Entity<boolean>
+	
+	-- Client-Sided ECS Components
+	ServerEntityID = serverData.world:component() :: Entity<number>
 end
 
 

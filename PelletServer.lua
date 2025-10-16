@@ -1,12 +1,18 @@
 local ReplicatedStorage = game:GetService('ReplicatedStorage')
 local RunService = game:GetService('RunService')
 local Players = game:GetService('Players')
+repeat wait() until ReplicatedStorage.Shared:FindFirstChild('jecs')
 local jecs = require(ReplicatedStorage.Shared.jecs)
 
-local world = jecs.World.new()
+-- Remotes
+local InitializePellets = script:WaitForChild('InitializePellets') :: RemoteFunction
+local UpdatePellets = script:WaitForChild('UpdatePellets') :: RemoteEvent
+
+-- Jecs
+local world = jecs.world()
 type Entity<T = nil> = jecs.Entity<T>
 
--- Jecs Variables
+-- Jecs Component Declarations
 local Pellet = world:component() :: Entity<Part>
 local Position = world:component() :: Entity<Vector3>
 local ChunkHash = world:component() :: Entity<string>
@@ -17,6 +23,9 @@ local region = workspace:FindFirstChild('PelletRegion') :: Part
 local regionOriginX = region.Position.X - region.Size.X/2
 local regionOriginZ = region.Position.Z - region.Size.Z/2
 
+regionOriginX = tonumber(string.format("%.1f", regionOriginX))
+regionOriginZ = tonumber(string.format("%.1f", regionOriginZ))
+
 -- Data Structure Declarations
 export type ServerData = {
 	chunkTable: {[string]: ChunkData},
@@ -24,7 +33,8 @@ export type ServerData = {
 	pelletSpacing: number,
 	pelletStartPos: number,
 	chunkSize: Vector3,
-	region: Part,	
+	region: Part,
+	regionOriginPosition: Vector3,
 	world: jecs.World,
 }
 
@@ -40,6 +50,10 @@ export type PelletData = {
 	Position: Vector3,
 	Collected: boolean,
 	ChunkHash: string,
+	ServerEntityID: number,
+	
+	-- Server use only
+	CollectedBy: Player,
 }
 
 -- Initialize serverData
@@ -52,10 +66,8 @@ serverData.chunkSize = Vector3.new(100, 10, 100)
 
 -- Authoritative Data on server
 serverData.chunkTable = {}
-serverData.chunkTable.regionOrigin = Vector3.new(regionOriginX, region.Position.Y, regionOriginZ)
+serverData.regionOriginPosition = Vector3.new(regionOriginX, region.Position.Y, regionOriginZ)
 
--- Remotes
-local UpdatePellets = script:WaitForChild('UpdatePellets') :: RemoteEvent
 
 
 --[[
@@ -97,33 +109,24 @@ function createChunk(region, ix, iz)
 	chunkData.iz = iz
 	chunkData.originPosition = Vector3.new(originX, centerYAboveRegion, originZ)
 	chunkData.centerPosition = Vector3.new(centerX, centerYAboveRegion, centerZ)
+	chunkData.worldData = {}
 	
 	-- Create JECS World for Chunk
-	--serverData.chunkTable[chunkHash].world = jecs.World.new() :: jecs.World
-	chunkData.world = jecs.World.new() :: jecs.World
 	
 	--serverData.chunkTable[chunkHash].ix = ix
 	--serverData.chunkTable[chunkHash].iz = iz
 	--serverData.chunkTable[chunkHash].originPosition = Vector3.new(originX, centerYAboveRegion, originZ)
 	--serverData.chunkTable[chunkHash].centerPosition = Vector3.new(centerX, centerYAboveRegion, centerZ)
 	
-	-- TODO: Fully flesh out ServerData and ChunkData data strutures, 
-	-- TODO: Work on local chunk creation + handling ServerData
-	-- TODO: Work on Pellet Collision system
-	
-	print(string.format("CHUNK HASH: [%s] = %s, (%d, y, %d)", chunkHash, serverData.chunkTable[chunkHash], chunkData.world))
+	--print(string.format("CHUNK HASH: [%s] = %s, (%d, y, %d)", chunkHash, serverData.chunkTable[chunkHash], chunkData.world))
 	serverData.numChunks += 1
 	
 	return chunkHash
 end
 
-function addPelletToChunk()
-	
-end
-
 function spawnPelletsForChunk(chunkHash : string)
 	
-	local chunkData = serverData[chunkHash] :: ChunkData
+	local chunkData = serverData.chunkTable[chunkHash] :: ChunkData
 	local cx = serverData.chunkSize.X
 	local cz = serverData.chunkSize.Z
 	
@@ -135,24 +138,25 @@ function spawnPelletsForChunk(chunkHash : string)
 		for z = serverData.pelletStartPos, cz-1, serverData.pelletSpacing do
 			local coordx = originx + x
 			local coordz = originz + z
-			-- Create pellet part locally
-			--local pellet = createPellet(region, coordx, coordz)
 			
-			-- TODO: Add pellet information to the world
 			-- Serialized Version of the Pellet
 			local newPellet = {} :: PelletData
 			newPellet.Position = Vector3.new(coordx, serverData.region.Position.Y + 3, coordz)
 			newPellet.ChunkHash = chunkHash
 			newPellet.Collected = false
 			
-			-- Insert into chunkData world
-			table.insert(chunkData.worldData, newPellet)
 			
 			-- JECS Version of the pellet in world
-			local pelletEntity = world:entity()
-			world:set(pelletEntity, Position, newPellet.Position)
-			world:set(pelletEntity, Collected, false)
-			world:set(pelletEntity, ChunkHash, chunkHash)
+			local pelletEntityID = world:entity()
+			world:set(pelletEntityID, Position, newPellet.Position)
+			world:set(pelletEntityID, Collected, false)
+			world:set(pelletEntityID, ChunkHash, chunkHash)
+			
+			-- Add Server Pellet's EntityID to send to Client
+			newPellet.ServerEntityID = pelletEntityID
+
+			-- Insert into chunkData world
+			table.insert(chunkData.worldData, newPellet)
 		end
 	end
 end
@@ -165,11 +169,17 @@ function spawnChunksForRegion(region : Part)
 
 	for ix = 0, numChunksX - 1 do
 		for iz = 0, numChunksZ - 1 do
-			--local cornerx = regionOriginX + x
-			--local cornerz = regionOriginZ + z
 			local chunkHash = createChunk(region, ix, iz)
 			spawnPelletsForChunk(chunkHash)
 			print( string.format("Created chunk [%s] at (%d, %d)", chunkHash, ix, iz) )
 		end
 	end
+end
+
+spawnChunksForRegion(serverData.region)
+
+
+InitializePellets.OnServerInvoke = function(player: Player)
+	print('player ', player, ' called InitializePellets.OnServerEvent')
+	return serverData
 end
