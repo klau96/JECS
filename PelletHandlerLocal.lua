@@ -57,8 +57,8 @@ export type ServerData = {
 	
 	-- Local Additions
 	pelletFolder: Folder,
-	pelletPositionLookup: {[string]: {number} }, -- [PositionHash]: {ClientID, ServerID}
-	pelletServerIDLookup: {[number]: string}
+	pelletPositionLookup: {[string]: PelletData }, -- [PositionHash]: PelletData
+	pelletServerIDLookup: {[number]: PelletData}
 }
 
 
@@ -119,7 +119,6 @@ function createLocalPellet(newPosition: Vector3, chunkHash: string)
 	serverData.world:set(pelletEntityID, ChunkHash, chunkHash)
 
 	pellet.Parent = serverData.pelletFolder 
-	print("createLocalPellet(): pelletEntity id = ", pelletEntityID)
 	return pellet, pelletEntityID
 end
 
@@ -152,14 +151,12 @@ function createPelletLookupData(pelletData : PelletData)
 	-- Set Position Lookup
 	-- 	Used for local, check for collided pellet in own ECS using ClientEntityID
 	--	Used from Client —> Server: inform server that pellet has been collected
-	serverData.pelletPositionLookup[positionHash] = {}
-	serverData.pelletPositionLookup[positionHash][1] = pelletData.ClientEntityID
-	serverData.pelletPositionLookup[positionHash][2] = pelletData.ServerEntityID -- Server Entity
+	serverData.pelletPositionLookup[positionHash] = pelletData
 	
 	-- Set ServerEntityID Lookup
 	--	Used from Server —> Client: inform client that pellet has been collected by other player.
 	--	Then, checks Position Lookup, local client ECS World to remove pellet
-	serverData.pelletServerIDLookup[serverIDHash] = positionHash
+	serverData.pelletServerIDLookup[serverIDHash] = pelletData
 	
 	print('> Set', positionHash, ' to -> ', serverData.pelletPositionLookup[positionHash])
 end
@@ -208,23 +205,56 @@ end
 	Parameters: 
 		
 ]]
-function CollectPellet()
-	
+
+local testSparkle = ReplicatedStorage.Assets:WaitForChild('TestSparkle') :: ParticleEmitter
+
+function CreateSparkle(position: Vector3)
+	local att = Instance.new("Attachment")
+	att.Parent = workspace
+	att.CFrame = CFrame.new(position)
+
+	local particle = testSparkle:Clone()
+	particle.Parent = att
+	particle:Emit(1)
+	game.Debris:AddItem(att, 2)
+	return att, particle
+end
+
+function DeleteFromWorkspace(pelletData: PelletData)
+	game.Debris:AddItem(pelletData.PelletInstance, 0)
+end
+
+function DeleteFromECS(pelletData: PelletData)
+	serverData.world:delete(pelletData.ClientEntityID)
+end
+
+function RemovePellet(pelletData: PelletData)
+	CreateSparkle(pelletData.Position)
+	DeleteFromWorkspace(pelletData)
+	DeleteFromECS(pelletData)
+end
+
+function CleanupPelletReferences(pelletData: PelletData)
+	local positionHash = tostring(pelletData.Position)
+	local serverEntityID = pelletData.ServerEntityID
+	serverData.pelletPositionLookup[positionHash] = nil
+	serverData.pelletServerIDLookup[ServerEntityID] = nil
 end
 
 
 function pelletDetectionLoop()
 	local cache = serverData.world:query(Pellet, Position)
-	--RunService.Heartbeat:Connect(function(deltaTime: number)
-	while wait(1) do
+	RunService.Heartbeat:Connect(function(deltaTime: number)
+	--while wait(1) do
 		local hitPellets = workspace:GetPartBoundsInRadius(hroot.Position, 1, IncludePelletFilterParams)
 		if hitPellets then
 			for i, item in pairs(hitPellets) do
 				-- Check if the PositionHash leads to any valid entity ID's
 				local positionHash = tostring(item.Position)
-				local clientEntityID = serverData.pelletPositionLookup[positionHash][1]
+				local pelletData = serverData.pelletPositionLookup[positionHash] :: PelletData
+				local clientEntityID = pelletData.ClientEntityID
 				if not clientEntityID then continue end
-				print('> 201 — PositionHash Returned: entity ID = ', serverData.pelletPositionLookup[positionHash][1])
+				print('> 201 — PositionHash Returned: ClientEntityID = ', pelletData.ClientEntityID)
 				
 				-- Check if the Client Entity ID leads to any valid entities
 				if not serverData.world:contains(clientEntityID) then continue end
@@ -234,9 +264,12 @@ function pelletDetectionLoop()
 				
 				-- TODO: Implement UpdatePellets, Client —> Server
 				-- TODO: Pass in ServerEntityID to Server
-				local serverEntityID = serverData.pelletPositionLookup[positionHash][2]
+				local serverEntityID = pelletData.ServerEntityID
 				print('Client UpdatePellets(): Sending ServerEntityID =', serverEntityID)
+				
 				UpdatePellets:FireServer(serverEntityID)
+				RemovePellet(pelletData)
+				CleanupPelletReferences(pelletData)
 
 				-- TODO (Server): Receive Pellet, Track pellets collected
 				-- TODO (Server): Send authoritative Pellet State to all clients
@@ -256,8 +289,8 @@ function pelletDetectionLoop()
 			end
 			print('------')
 		end
-	--end) do
-	end
+	end) 
+	--end
 end
 
 

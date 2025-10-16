@@ -209,4 +209,5 @@ UpdatePellets.OnServerEvent:Connect(function(player: Player, ServerEntityID: num
 	print('Server — UpdatePellets() — Player ', player.Name, ' collected Pellet.ServerEntityID = ', ServerEntityID)
 	local pelletPosition = authData.world:get(ServerEntityID, Position)
 	print('Server — UpdatePellets() — Pellet\'s Position:', pelletPosition)
+	-- TODO: Remove Pellet
 end)
