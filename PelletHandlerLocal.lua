@@ -57,7 +57,7 @@ export type ServerData = {
 	
 	-- Local Additions
 	pelletFolder: Folder,
-	pelletPositionLookup: {[string]: {number} }, -- [PositionHash]: {["ClientID"]}
+	pelletPositionLookup: {[string]: {number} }, -- [PositionHash]: {ClientID, ServerID}
 	pelletServerIDLookup: {[number]: string}
 }
 
@@ -204,6 +204,14 @@ end
 --	return hitbox
 --end
 
+--[[ 
+	Parameters: 
+		
+]]
+function CollectPellet()
+	
+end
+
 
 function pelletDetectionLoop()
 	local cache = serverData.world:query(Pellet, Position)
@@ -212,27 +220,29 @@ function pelletDetectionLoop()
 		local hitPellets = workspace:GetPartBoundsInRadius(hroot.Position, 1, IncludePelletFilterParams)
 		if hitPellets then
 			for i, item in pairs(hitPellets) do
-				print('detected: ', item, item.Position)
-				
 				-- Check if the PositionHash leads to any valid entity ID's
 				local positionHash = tostring(item.Position)
 				local clientEntityID = serverData.pelletPositionLookup[positionHash][1]
 				if not clientEntityID then continue end
-				print('201 positionHash returned: entity ID = ', serverData.pelletPositionLookup[positionHash][1])
+				print('> 201 — PositionHash Returned: entity ID = ', serverData.pelletPositionLookup[positionHash][1])
 				
 				-- Check if the Client Entity ID leads to any valid entities
 				if not serverData.world:contains(clientEntityID) then continue end
-				print('201 entity id found in world:', serverData.world:get(clientEntityID, Position))
+				print('> 201 — ClientEntityID Found!  Position =', serverData.world:get(clientEntityID, Position))
+				
+				-- TODO: Local Pellet collection VFX
 				
 				-- TODO: Implement UpdatePellets, Client —> Server
 				-- TODO: Pass in ServerEntityID to Server
-				
+				local serverEntityID = serverData.pelletPositionLookup[positionHash][2]
+				print('Client UpdatePellets(): Sending ServerEntityID =', serverEntityID)
+				UpdatePellets:FireServer(serverEntityID)
+
 				-- TODO (Server): Receive Pellet, Track pellets collected
 				-- TODO (Server): Send authoritative Pellet State to all clients
 				
 				-- TODO (Client): Create Pellet VFX Handler, 
 				-- TODO (Client): Program remove Pellet logic, remove from ECS World, PositionLookup, ServerEntityID Lookup
-				UpdatePellets:FireServer()
 				
 				--for id, pellet, pos : Vector3 in cache:iter() do
 				--	print('ECS LOOP: comparing ', id, pellet, '|', pos, '|', item.position)
@@ -261,6 +271,7 @@ end
 function SetupServerData()
 	serverData.world = jecs.world()
 	serverData.pelletPositionLookup = {}
+	serverData.pelletServerIDLookup = {}
 	
 	-- Initialize ECS Component Declarations 
 	Pellet = serverData.world:component() :: Entity<Part>
@@ -273,7 +284,7 @@ function SetupServerData()
 end
 
 
--- MAIN 
+-- Main
 function init()
 	serverData = InitializePellets:InvokeServer() :: ServerData
 	print('Local: serverData received = ', serverData)
