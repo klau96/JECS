@@ -213,20 +213,27 @@ function pelletDetectionLoop()
 		if hitPellets then
 			for i, item in pairs(hitPellets) do
 				print('detected: ', item, item.Position)
-				-- TODO: Implement hash lookup table for pellets
 				
-				-- Check if the positionHash leads to any valid entity ID's
+				-- Check if the PositionHash leads to any valid entity ID's
 				local positionHash = tostring(item.Position)
 				local clientEntityID = serverData.pelletPositionLookup[positionHash][1]
 				if not clientEntityID then continue end
 				print('201 positionHash returned: entity ID = ', serverData.pelletPositionLookup[positionHash][1])
 				
-				-- Check if the entity ID leads to any valid entities
+				-- Check if the Client Entity ID leads to any valid entities
 				if not serverData.world:contains(clientEntityID) then continue end
 				print('201 entity id found in world:', serverData.world:get(clientEntityID, Position))
 				
+				-- TODO: Implement UpdatePellets, Client —> Server
+				-- TODO: Pass in ServerEntityID to Server
 				
+				-- TODO (Server): Receive Pellet, Track pellets collected
+				-- TODO (Server): Send authoritative Pellet State to all clients
+				
+				-- TODO (Client): Create Pellet VFX Handler, 
+				-- TODO (Client): Program remove Pellet logic, remove from ECS World, PositionLookup, ServerEntityID Lookup
 				UpdatePellets:FireServer()
+				
 				--for id, pellet, pos : Vector3 in cache:iter() do
 				--	print('ECS LOOP: comparing ', id, pellet, '|', pos, '|', item.position)
 				--	if pos == item.Position then
