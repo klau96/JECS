@@ -1,11 +1,15 @@
-local player = game.Players.LocalPlayer
-local character = player.Character or player.CharacterAdded:Wait()
-local hroot = character:WaitForChild('HumanoidRootPart') :: Part
-
 -- Services
 local ReplicatedStorage = game:GetService('ReplicatedStorage')
 local RunService = game:GetService('RunService')
 local jecs = require(ReplicatedStorage.Shared.jecs)
+
+-- Local
+local player = game.Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local hroot = character:WaitForChild('HumanoidRootPart') :: Part
+
+-- Modules
+local SoundModule = require(ReplicatedStorage.Modules:WaitForChild('Sound'))
 
 -- Server
 local PelletServer = workspace:WaitForChild('PelletServer') :: Script
@@ -133,8 +137,8 @@ function createChunk(chunkHash : string, chunkData : ChunkData)
 	chunk.Size = serverData.chunkSize
 	chunk.Anchored = true
 	chunk.CanCollide = false
-	chunk.Transparency = 0.8
-	chunk.Color = Color3.new(1, 0, 0)
+	chunk.Transparency = 0.95
+	chunk.Color = Color3.new(0, 0.34844, 1)
 
 	chunk.Position = chunkData.centerPosition
 	chunk.Parent = workspace
@@ -158,7 +162,7 @@ function createPelletLookupData(pelletData : PelletData)
 	--	Then, checks Position Lookup, local client ECS World to remove pellet
 	serverData.pelletServerIDLookup[serverIDHash] = pelletData
 	
-	print('> Set', positionHash, ' to -> ', serverData.pelletPositionLookup[positionHash])
+	--print('> Set', positionHash, ' to -> ', serverData.pelletPositionLookup[positionHash])
 end
 
 function spawnPelletsForChunk(chunkHash : string, chunkData : ChunkData)
@@ -176,6 +180,7 @@ function spawnChunksForRegion(region : Part)
 		createChunk(chunkHash, chunkData)
 		spawnPelletsForChunk(chunkHash, chunkData)
 		print( string.format("Created chunk [%s] at (%d, %d)", chunkHash, chunkData.ix, chunkData.iz) )
+		task.wait()
 	end
 end
 
@@ -206,7 +211,8 @@ end
 		
 ]]
 
-local testSparkle = ReplicatedStorage.Assets:WaitForChild('TestSparkle') :: ParticleEmitter
+local testSparkle = ReplicatedStorage.Assets.TEMPORARY:WaitForChild('TestSparkle') :: ParticleEmitter
+local testPelletSound = ReplicatedStorage.Assets.TEMPORARY:WaitForChild('CollectSoundRetro') :: Sound
 
 function CreateSparkle(position: Vector3)
 	local att = Instance.new("Attachment")
@@ -229,7 +235,8 @@ function DeleteFromECS(pelletData: PelletData)
 end
 
 function RemovePellet(pelletData: PelletData)
-	CreateSparkle(pelletData.Position)
+	local att, particle = CreateSparkle(pelletData.Position)
+	local sound = SoundModule.PlaySoundAtLocation(SoundModule.pacmanPellet, pelletData.Position)
 	DeleteFromWorkspace(pelletData)
 	DeleteFromECS(pelletData)
 end
@@ -245,8 +252,7 @@ end
 function pelletDetectionLoop()
 	local cache = serverData.world:query(Pellet, Position)
 	RunService.Heartbeat:Connect(function(deltaTime: number)
-	--while wait(1) do
-		local hitPellets = workspace:GetPartBoundsInRadius(hroot.Position, 1, IncludePelletFilterParams)
+		local hitPellets = workspace:GetPartBoundsInRadius(hroot.Position, 6, IncludePelletFilterParams)
 		if hitPellets then
 			for i, item in pairs(hitPellets) do
 				-- Check if the PositionHash leads to any valid entity ID's
@@ -254,11 +260,11 @@ function pelletDetectionLoop()
 				local pelletData = serverData.pelletPositionLookup[positionHash] :: PelletData
 				local clientEntityID = pelletData.ClientEntityID
 				if not clientEntityID then continue end
-				print('> 201 — PositionHash Returned: ClientEntityID = ', pelletData.ClientEntityID)
+				--print('> 201 — PositionHash Returned: ClientEntityID = ', pelletData.ClientEntityID)
 				
 				-- Check if the Client Entity ID leads to any valid entities
 				if not serverData.world:contains(clientEntityID) then continue end
-				print('> 201 — ClientEntityID Found!  Position =', serverData.world:get(clientEntityID, Position))
+				--print('> 201 — ClientEntityID Found!  Position =', serverData.world:get(clientEntityID, Position))
 				
 				-- TODO: Local Pellet collection VFX
 				
@@ -276,21 +282,10 @@ function pelletDetectionLoop()
 				
 				-- TODO (Client): Create Pellet VFX Handler, 
 				-- TODO (Client): Program remove Pellet logic, remove from ECS World, PositionLookup, ServerEntityID Lookup
-				
-				--for id, pellet, pos : Vector3 in cache:iter() do
-				--	print('ECS LOOP: comparing ', id, pellet, '|', pos, '|', item.position)
-				--	if pos == item.Position then
-				--		print('DETECTED PELLET INSIDE ECS!')
-				--		serverData.world:remove(id)
-				--		game.Debris:AddItem(item, 0)
-				--		break
-				--	end
-				--end
 			end
-			print('------')
+			--print('------')
 		end
-	end) 
-	--end
+	end)
 end
 
 
@@ -331,3 +326,14 @@ end
 
 
 init()
+
+
+--for id, pellet, pos : Vector3 in cache:iter() do
+--	print('ECS LOOP: comparing ', id, pellet, '|', pos, '|', item.position)
+--	if pos == item.Position then
+--		print('DETECTED PELLET INSIDE ECS!')
+--		serverData.world:remove(id)
+--		game.Debris:AddItem(item, 0)
+--		break
+--	end
+--end
