@@ -162,7 +162,7 @@ function spawnPelletsForChunk(chunkHash : string)
 			
 			-- Serialized Version of the Pellet
 			local newPellet = {} :: PelletData
-			newPellet.Position = Vector3.new(coordx, serverData.region.Position.Y + 3, coordz)
+			newPellet.Position = Vector3.new(coordx, serverData.region.Position.Y + 3.5, coordz)
 			newPellet.ChunkHash = chunkHash
 			newPellet.Collected = false
 			
@@ -181,6 +181,7 @@ function spawnPelletsForChunk(chunkHash : string)
 		end
 	end
 end
+
 
 function spawnChunksForRegion(region : Part)
 	-- Root Origin for region part
@@ -207,6 +208,6 @@ end
 UpdatePellets.OnServerEvent:Connect(function(player: Player, ServerEntityID: number)
 	print('Server — UpdatePellets() — Player ', player.Name, ' collected Pellet.ServerEntityID = ', ServerEntityID)
 	local pelletPosition = authData.world:get(ServerEntityID, Position)
-	print('Server — UpdatePellets() — Pellet\'s Position:', pelletPosition)
+	--print('Server — UpdatePellets() — Pellet\'s Position:', pelletPosition)
 	-- TODO: Remove Pellet
 end)
