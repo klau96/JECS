@@ -182,7 +182,6 @@ function spawnPelletsForChunk(chunkHash : string)
 	end
 end
 
-
 function spawnChunksForRegion(region : Part)
 	-- Root Origin for region part
 	local numChunksX = math.ceil(region.Size.X / serverData.chunkSize.X)
