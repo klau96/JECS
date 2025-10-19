@@ -4,10 +4,11 @@
 
 local ReplicatedStorage = game:GetService('ReplicatedStorage')
 local ServerScriptService = game:GetService('ServerScriptService')
+local TweenService = game:GetService('TweenService')
 
-local boardW = 20;
-local cellW = 20;
-local h = 30;
+local boardW = 16;
+local cellW = 25;
+local h = 60;
 
 local nodeClass = require(script.NodeClass);
 nodeClass.boardW = boardW
@@ -96,7 +97,7 @@ function createPointer(current: nodeClass)
 	ptr.CanCollide = false;
 	ptr.Material = Enum.Material.Neon;
 	ptr.Parent = workspace;
-	ptr.Color = Color3.new(0.309804, 1, 0.470588);
+	ptr.Color = nodeClass.pointerColor;
 	
 	local att = Instance.new("Attachment")
 	att.Name = "Attachment"
@@ -135,13 +136,12 @@ function calculateMaze()
 	end
 end
 
-
-
 -- Additions to maze generator script
 -- puf 
 
 export type PassageLookup = {[number]: {number}}
-passageLookup = {} :: PassageLookup
+local passageLookup = {} :: PassageLookup
+local allPassages = {}
 
 function findRandomNodeIndex()
 	local irandom = math.random(1, boardW)
@@ -223,15 +223,38 @@ function removeWallFromTargetNode(targetIndex: number)
 	return true
 end
 
-local theWallColor = Color3.new(0.934203, 0.13724, 0.254231)
 function makePassageWall(wall: Part)
-	wall.Color = theWallColor
-	wall.Transparency = 0.6
-	wall.CanCollide = false
+	table.insert(allPassages, wall)
+	wall.Color = nodeClass.highlightColor
 	wall.Material = Enum.Material.Neon
 	
-	wall.Size = wall.Size - Vector3.new(0, 28, 0)
-	wall.Position = wall.Position + Vector3.new(0, 14, 0)
+	local sizeDiff = 55
+	wall.Size = wall.Size - Vector3.new(0, sizeDiff, 0)
+	wall.Position = wall.Position + Vector3.new(0, sizeDiff/2, 0)
+end
+
+function changeAllPassageColors()
+	for i, passage in ipairs(allPassages) do
+		local tween = TweenService:Create(
+			passage,
+			TweenInfo.new(
+				4,
+				Enum.EasingStyle.Linear,
+				Enum.EasingDirection.In,
+				0,
+				false
+			),
+			{
+				Color=nodeClass.normalColor,
+				Transparency = 0,
+			}
+		)
+		tween:Play()
+		-- Turn passage wall back to material
+		tween.Completed:Connect(function()
+			passage.Material = Enum.Material.Slate
+		end)
+	end
 end
 
 function resetVisitedNodes()
@@ -267,7 +290,7 @@ end
 
 function generateRandomPassages()
 	local counter = 0
-	local numberOfPassages = 10
+	local numberOfPassages = 20
 	
 	while counter < numberOfPassages do 
 		local targetIndex = findRandomNodeIndex()
@@ -280,10 +303,10 @@ end
 
 resetVisitedNodes()
 
-generateRandomPassages()
 generateUniformPassages()
+generateRandomPassages()
 
 resetPointer()
-
+changeAllPassageColors()
 
 print("ORIGIN NODE POSITION: ", nodes[1].x, nodes[1].y)
