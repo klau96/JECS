@@ -1,5 +1,9 @@
 local nodeClass = {};
 nodeClass.__index = nodeClass;
+nodeClass.startColor = Color3.new(0.950042, 0.894057, 0);
+nodeClass.normalColor = Color3.new(0.207843, 0.207843, 0.207843);
+nodeClass.highlightColor = Color3.new(0.934203, 0.13724, 0.254231);
+nodeClass.pointerColor = Color3.new(0.309804, 1, 0.470588);
 
 function nodeClass.new(i, j, w, h, boardW)
 	local self = setmetatable({}, nodeClass);
@@ -9,10 +13,10 @@ function nodeClass.new(i, j, w, h, boardW)
 	self.x = j * w;
 	self.y = i * w;
 	
-	self.wallColour = Color3.new(0.207843, 0.207843, 0.207843);
+	self.wallColour = nodeClass.startColor;
 	
 	if self.x == w and self.y == w then
-		self.wallColour = Color3.new(0.207843, 0.207843, 0.207843);
+		self.wallColour = nodeClass.normalColor
 	end
 	
 	self.w = w;
@@ -24,22 +28,25 @@ function nodeClass.new(i, j, w, h, boardW)
 	self.visited = false;
 	
 	self.walls = {};
+	
+	self.regionOrigin = nil :: Vector3
 	return self;
 end
 
 function nodeClass:changeWallColours()
-	for i, v in pairs(self.walls) do
-		v.Color = Color3.new(0.990295, 1, 1);
+	for i, v: BasePart in pairs(self.walls) do
+		v.Color = nodeClass.normalColor;
+		v.Material = Enum.Material.Slate
 	end
 end
 
 function nodeClass:spawnWalls()
 	--TOP WALL
-	self:createWall(Vector3.new(self.w,self.h, self.stroke), Vector3.new(self.x, 0, self.y - self.w/2), "TOP");
+	self:createWall(Vector3.new(self.w,self.h, self.stroke), Vector3.new(self.x, 			0, self.y - self.w/2), "TOP");
 	--LEFT WALL
 	self:createWall(Vector3.new(self.stroke,self.h, self.w), Vector3.new(self.x - self.w/2, 0, self.y), "LEFT");
 	--BOTTOM WALL
-	self:createWall(Vector3.new(self.w,self.h, self.stroke), Vector3.new(self.x, 0, self.y + self.w/2), "BOTTOM");
+	self:createWall(Vector3.new(self.w,self.h, self.stroke), Vector3.new(self.x, 			0, self.y + self.w/2), "BOTTOM");
 	--RIGHT WALL
 	self:createWall(Vector3.new(self.stroke,self.h, self.w), Vector3.new(self.x + self.w/2, 0, self.y), "RIGHT");
 end
@@ -49,7 +56,7 @@ function nodeClass:createWall(size, position, name)
 	wall.Anchored = true;
 	wall.Name = name;
 	wall.Size = size;
-	wall.Position = position;
+	wall.Position = position + self.regionOrigin - Vector3.new(self.w/2, 0, self.w/2);
 	wall.CanCollide = true
 	wall.Parent = game.Workspace;
 	wall.Color = self.wallColour;
