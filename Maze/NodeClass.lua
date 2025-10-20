@@ -3,7 +3,7 @@ nodeClass.__index = nodeClass;
 nodeClass.startColor = Color3.new(0.950042, 0.894057, 0);
 nodeClass.normalColor = Color3.new(0.207843, 0.207843, 0.207843);
 nodeClass.highlightColor = Color3.new(0.934203, 0.13724, 0.254231);
-nodeClass.pointerColor = Color3.new(0.309804, 1, 0.470588);
+
 
 function nodeClass.new(i, j, w, h, boardW)
 	local self = setmetatable({}, nodeClass);
@@ -28,6 +28,7 @@ function nodeClass.new(i, j, w, h, boardW)
 	self.visited = false;
 	
 	self.walls = {};
+	self.wallsFolder = nil
 	
 	self.regionOrigin = nil :: Vector3
 	return self;
@@ -58,7 +59,7 @@ function nodeClass:createWall(size, position, name)
 	wall.Size = size;
 	wall.Position = position + self.regionOrigin - Vector3.new(self.w/2, 0, self.w/2);
 	wall.CanCollide = true
-	wall.Parent = game.Workspace;
+	wall.Parent = self.wallsFolder;
 	wall.Color = self.wallColour;
 	wall.Material = Enum.Material.SmoothPlastic;
 	table.insert(self.walls, wall);

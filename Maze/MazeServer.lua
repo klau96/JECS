@@ -2,21 +2,23 @@
 -- https://www.youtube.com/watch?v=nGveqHnicr8
 -- Spaghetti code additions made by ininja966
 
+-- Services
 local ReplicatedStorage = game:GetService('ReplicatedStorage')
 local ServerScriptService = game:GetService('ServerScriptService')
 local TweenService = game:GetService('TweenService')
 
+-- Modules
+local nodeClass = require(script.NodeClass);
+local stackModule = require(script.Stack);
+local PointerModule = require(script:WaitForChild('Pointer'));
+export type Pointer = typeof(PointerModule.new())
+
+-- Maze Settings Variables
 local boardW = 16;
 local cellW = 25;
 local h = 60;
-
-local nodeClass = require(script.NodeClass);
-nodeClass.boardW = boardW
-local stackModule = require(script.Stack);
-
 local nodes = {};
-
-pointer = nil
+local pointer = nil
 
 -- Pellet Region
 local region = workspace.PelletRegion
@@ -28,12 +30,25 @@ local regionOriginPosition = Vector3.new(regionOriginX, region.Position.Y, regio
 local SoundModule = require(ReplicatedStorage.Modules:WaitForChild('Sound'))
 
 
+function initNodeClass()
+	nodeClass.boardW = boardW
+	nodeClass.wallsFolder = CreateFolderForWalls()
+end
+
+function CreateFolderForWalls()
+	local folder = Instance.new("Folder")
+	folder.Name = "MazeWalls"
+	folder.Parent = workspace
+	return folder
+end
+
 function createNewMaze()
 	local index = 1;
 	for i = 1, boardW do
 		for j = 1, boardW do
 			local currentNode = nodeClass.new(i, j, cellW, h, boardW);
 			currentNode.regionOrigin = regionOriginPosition
+			currentNode.wallsFolder = nodeClass.wallsFolder
 			currentNode:spawnWalls();
 			nodes[index] = currentNode;
 			index += 1;
@@ -42,7 +57,7 @@ function createNewMaze()
 end
 
 function wallsBetweenNodesExist(nodeTable, wallIndexes)
-	return nodeTable[1].walls[wallIndexes[1]].Parent == workspace and nodeTable[2].walls[wallIndexes[2]].Parent == workspace
+	return nodeTable[1].walls[wallIndexes[1]].Parent == nodeClass.wallsFolder and nodeTable[2].walls[wallIndexes[2]].Parent == nodeClass.wallsFolder
 end
 
 function removeWalls(currentNode: nodeClass, nextNode: nodeClass)
@@ -87,41 +102,24 @@ function findWallIndexesBetweenNodes(nodeTable)
 	return wallIndexLookup.x[x] or wallIndexLookup.y[y]
 end
 
-function createPointer(current: nodeClass)
-	local ptr = Instance.new("Part")
-	ptr.Size = Vector3.new(cellW, h, cellW);
-	pointer = ptr
-	--pointer.Position = Vector3.new(current.x, 0,current.y)
-	setPointerPosition(current)
-	ptr.Anchored = true;
-	ptr.CanCollide = false;
-	ptr.Material = Enum.Material.Neon;
-	ptr.Parent = workspace;
-	ptr.Color = nodeClass.pointerColor;
-	
-	local att = Instance.new("Attachment")
-	att.Name = "Attachment"
-	att.Parent = pointer
-	return ptr
-end
-
 
 function calculateMaze()
 	local nodeStack = stackModule.new(cellW * cellW);
 	local current = nodes[1];
 	--Mark first one as visited and push onto stack
 	current.visited = true;
-	--print(current:checkNeighbors(nodes));
+	
 	nodeStack:push(current);
 	
-	--Create the currentNodePointerMesh
-	pointer = createPointer(current)
+	-- Initialize the Pointer
+	pointer = PointerModule.new(cellW, h) :: Pointer
+	pointer:createPointerInstance()
 	
 	while not nodeStack:isEmpty() do
 		current = nodeStack:pop();
 		current:changeWallColours();
 		--pointer.Position = Vector3.new(current.x, 0,current.y)
-		setPointerPosition(current)
+		pointer:setPointerPosition(current)
 		
 		-- Will return a random neighbor from the node
 		local neighbor, index = current:checkNeighbors(nodes); 
@@ -147,7 +145,7 @@ function findRandomNodeIndex()
 	local irandom = math.random(1, boardW)
 	local jrandom = math.random(1, boardW)
 	local randomIndex = (nodeClass:calculateStackNodeIndex(irandom, jrandom))
-	print(string.format("random node: [%d], (%d, %d)", randomIndex, irandom, jrandom))
+	
 	return randomIndex
 end
 
@@ -168,7 +166,7 @@ function removeWallFromTargetNode(targetIndex: number)
 	-- Loop —> Find a Valid Neighboring Wall
 	while not wallsExist do
 		--pointer.Position = Vector3.new(targetNode.x, 0, targetNode.y)
-		setPointerPosition(targetNode)
+		pointer:setPointerPosition(targetNode)
 		-- find a valid neighbor to the node
 		nextNode = targetNode:checkNeighbors(nodes)
 		nextIndex = nextNode:calculateStackNodeIndex(nextNode.i, nextNode.j)
@@ -183,20 +181,24 @@ function removeWallFromTargetNode(targetIndex: number)
 		wallsExist = wallsBetweenNodesExist(nodeTable, wallIndexes)
 		task.wait()
 		--pointer.Position = Vector3.new(nextNode.x, 0, nextNode.y)
-		setPointerPosition(nextNode)
+		pointer:setPointerPosition(nextNode)
 
 		local targetWallIsPassage = passageLookup[targetIndex] and table.find(passageLookup[targetIndex], wallIndexes[1])
+		print('passgeWall creation:', targetWallIsPassage, wallsExist)
 		local nextWallIsPassage = passageLookup[nextIndex] and table.find(passageLookup[nextIndex], wallIndexes[2])
 		if targetWallIsPassage or nextWallIsPassage then
 			-- wall exists, but is already a passage
 			-- therefore wall does not exist
 			print('PassageLookup: Walls Exist already')
+			
 			wallsExist = false
 		end
-		print(string.format("Nodes: (%d, %d) —> Do walls exist? = %s", targetIndex, nextIndex, tostring(wallsExist)) )
+		--print(string.format("Nodes: (%d, %d) —> Do walls exist? = %s", targetIndex, nextIndex, tostring(wallsExist)) )
+		
 		task.wait()
 		checkCounter = checkCounter + 1
 		if checkCounter > 16 then
+			print('checkCounter reached 16! Returning false...')
 			return false
 		end
 	end
@@ -224,6 +226,7 @@ function removeWallFromTargetNode(targetIndex: number)
 end
 
 function makePassageWall(wall: Part)
+	print('making passage wall')
 	table.insert(allPassages, wall)
 	wall.Color = nodeClass.highlightColor
 	wall.Material = Enum.Material.Neon
@@ -263,20 +266,18 @@ function resetVisitedNodes()
 	end
 end
 
-function setPointerPosition(currentNode: nodeClass)
-	pointer.Position = Vector3.new(currentNode.x, 0, currentNode.y) + currentNode.regionOrigin - Vector3.new(currentNode.w/2, 0, currentNode.w/2)
-	SoundModule.PlaySoundAtLocation(SoundModule.boop, pointer.Position)
+function resetPointer()
+	pointer:setPointerPosition(nodes[1])
+	pointer:PlayEndTweenLoop()
 end
 
-function resetPointer()
-	--pointer.Position = Vector3.new(nodes[1].x, 0, nodes[1].y)
-	setPointerPosition(nodes[1])
-end
+initNodeClass();
 
 wait(1);
 createNewMaze();
 calculateMaze();
 print("--------------------------")
+
 
 
 function generateUniformPassages()
@@ -308,5 +309,3 @@ generateRandomPassages()
 
 resetPointer()
 changeAllPassageColors()
-
-print("ORIGIN NODE POSITION: ", nodes[1].x, nodes[1].y)
