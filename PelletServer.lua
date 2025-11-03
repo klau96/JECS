@@ -59,8 +59,8 @@ export type PelletData = {
 -- Initialize ServerData
 local serverData = {} :: ServerData
 serverData.region = region
-serverData.pelletSpacing = 20
-serverData.pelletStartPos = 10
+serverData.pelletSpacing = 25
+serverData.pelletStartPos = serverData.pelletSpacing/2
 serverData.numChunks = 0
 serverData.chunkSize = Vector3.new(100, 10, 100)
 
@@ -192,7 +192,7 @@ function spawnChunksForRegion(region : Part)
 		for iz = 0, numChunksZ - 1 do
 			local chunkHash = createChunk(region, ix, iz)
 			spawnPelletsForChunk(chunkHash)
-			print( string.format("Created chunk [%s] at (%d, %d)", chunkHash, ix, iz) )
+			--print( string.format("Created chunk [%s] at (%d, %d)", chunkHash, ix, iz) )
 		end
 	end
 end
@@ -201,12 +201,11 @@ spawnChunksForRegion(serverData.region)
 
 
 InitializePellets.OnServerInvoke = function(player: Player)
-	print('player ', player, ' called InitializePellets.OnServerInvoke')
 	return serverData
 end
 
 UpdatePellets.OnServerEvent:Connect(function(player: Player, ServerEntityID: number)
-	print('Server — UpdatePellets() — Player ', player.Name, ' collected Pellet.ServerEntityID = ', ServerEntityID)
+	print('[Pellet] Server — UpdatePellets() — Player ', player.Name, ' collected Pellet.ServerEntityID = ', ServerEntityID)
 	local pelletPosition = authData.world:get(ServerEntityID, Position)
 	--print('Server — UpdatePellets() — Pellet\'s Position:', pelletPosition)
 	-- TODO: Remove Pellet
