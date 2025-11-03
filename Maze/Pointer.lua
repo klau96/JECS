@@ -27,7 +27,6 @@ export type Pointer = {
 }
 
 -- Constructor
-
 function pointer.new(cellW:number, h:number) : Pointer
 	local self = setmetatable({}, pointer) :: Pointer
 	self.Instance = nil
@@ -60,7 +59,7 @@ function pointer:createPointerInstance() : Part
 end
 
 function pointer:setPointerPosition(current: NodeClass)
-	self.Instance.Position = Vector3.new(current.x, 0, current.y) + current.regionOrigin - Vector3.new(current.w/2, 0, current.w/2)
+	self.Instance.Position = Vector3.new(current.x, 0, current.y) + current.regionOriginPosition - Vector3.new(current.w/2, 0, current.w/2)
 	SoundModule.PlaySoundAtLocation(SoundModule.boop, self.Instance.Position)
 end
 
