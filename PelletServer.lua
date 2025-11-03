@@ -1,20 +1,18 @@
+-- Services
 local ReplicatedStorage = game:GetService('ReplicatedStorage')
 local RunService = game:GetService('RunService')
 local Players = game:GetService('Players')
-repeat wait() until ReplicatedStorage.Shared:FindFirstChild('jecs')
-local jecs = require(ReplicatedStorage.Shared.jecs)
+
+-- Modules
+local jecs = require(ReplicatedStorage.Shared:WaitForChild('jecs'))
+type Entity<T = nil> = jecs.Entity<T>
 
 -- Remotes
-local InitializePellets = script:WaitForChild('InitializePellets') :: RemoteFunction
-local UpdatePellets = script:WaitForChild('UpdatePellets') :: RemoteEvent
 
--- Regular Variables
-local region = workspace:FindFirstChild('PelletRegion') :: Part
-local regionOriginX = region.Position.X - region.Size.X/2
-local regionOriginZ = region.Position.Z - region.Size.Z/2
-
-regionOriginX = tonumber(string.format("%.1f", regionOriginX))
-regionOriginZ = tonumber(string.format("%.1f", regionOriginZ))
+export type RemotesTable = {
+	InitializePellets: RemoteFunction,
+	UpdatePellet: RemoteEvent,
+}
 
 
 -- Data Structure Declarations
@@ -24,18 +22,31 @@ regionOriginZ = tonumber(string.format("%.1f", regionOriginZ))
 		Stores the Server's jecs.world()
 ]]
 export type AuthoritativeData = {
+	-- Jecs World
 	world: jecs.World,
+
+	-- Jecs Components
+	Pellet: Entity<Part>,
+	Position: Entity<Vector3>,
+	ChunkHash: Entity<string>,
+	Collected: Entity<boolean>,
+	
+	-- Lookup Table — Mapping EntityID -> PelletData
+	PelletEntityIDLookup: {
+		[number]: PelletData
+	}
 }
 
 export type ServerData = {
 	chunkTable: {[string]: ChunkData},
 	numChunks: number,
 	pelletSpacing: number,
-	pelletStartPos: number,
+	pelletStartPos: number?,
 	chunkSize: Vector3,
 	region: Part,
+	regionOriginX: Vector3,
+	regionOriginZ: Vector3,
 	regionOriginPosition: Vector3,
-	--world: jecs.World, 	-- Removed, cannot send this through remotes
 }
 
 export type ChunkData = {
@@ -56,30 +67,43 @@ export type PelletData = {
 	CollectedBy: Player,
 }
 
--- Initialize ServerData
-local serverData = {} :: ServerData
-serverData.region = region
-serverData.pelletSpacing = 25
-serverData.pelletStartPos = serverData.pelletSpacing/2
-serverData.numChunks = 0
-serverData.chunkSize = Vector3.new(100, 10, 100)
+-- Types — For Communicating to other Server scripts
+export type GameServerTable = {
+	GameServer: Script,
+	GetPlayerScore: BindableFunction?,
+	UpdateScore: BindableEvent?,
+}
 
-serverData.chunkTable = {}
-serverData.regionOriginPosition = Vector3.new(regionOriginX, region.Position.Y, regionOriginZ)
+export type RemotesTable = {
+	InitialPellets: RemoteFunction,
+	UpdatePellet: RemoteEvent,
+}
 
--- Jecs
-type Entity<T = nil> = jecs.Entity<T>
 
--- Initialize AuthoritativeData
-local authData = {} :: AuthoritativeData
-authData.world = jecs.world()
+-- Variables
+local Remotes: RemotesTable = {
+	InitializePellets = script:WaitForChild('InitializePellets') :: RemoteFunction,
+	UpdatePellet = script:WaitForChild('UpdatePellet') :: RemoteEvent,
+}
 
--- Initialize Jecs Components to the World
-local Pellet = authData.world:component() :: Entity<Part>
-local Position = authData.world:component() :: Entity<Vector3>
-local ChunkHash = authData.world:component() :: Entity<string>
-local Collected = authData.world:component() :: Entity<boolean>
+local authData = nil :: AuthoritativeData?
+local serverData: ServerData = {
+	region = nil,
+	pelletSpacing = 25,
+	pelletStartPos = nil,
+	numChunks = 0,
+	chunkSize = Vector3.new(100, 10, 100),
+	chunkTable = {},
+	regionOriginPostion = nil
+}
 
+
+local GameServerInstance = workspace:WaitForChild('GameServer')
+local GameServerTable = {
+	GameServer = GameServerInstance,
+	GetPlayerScore = GameServerInstance:WaitForChild('GetPlayerScore') :: BindableFunction,
+	UpdateScore = GameServerInstance:WaitForChild('UpdateScore') :: BindableEvent,
+}
 
 --[[
 Create Chunks
@@ -101,6 +125,41 @@ function generateHash(posx, posz)
 	return string.format("%d,%d", posx, posz)
 end
 
+function InitializeAuthData()
+	authData = {} :: AuthoritativeData
+	authData.world = jecs.world()
+	
+	-- Initialize Jecs Components to the World
+	authData.Pellet = authData.world:component() :: Entity<Part>
+	authData.Position = authData.world:component() :: Entity<Vector3>
+	authData.ChunkHash = authData.world:component() :: Entity<string>
+	authData.Collected = authData.world:component() :: Entity<boolean>
+	
+	authData.PelletEntityIDLookup = {}
+end
+
+function CleanUpAuthData()
+	for id in authData.world:entities():iter() do
+		authData.world:remove(id)
+	end
+end
+
+function InitializeServerData(region: Part)
+	-- Region variables
+	local regionOriginX = region.Position.X - region.Size.X/2
+	local regionOriginZ = region.Position.Z - region.Size.Z/2
+
+	serverData.regionOriginX = tonumber(string.format("%.1f", regionOriginX))
+	serverData.regionOriginZ = tonumber(string.format("%.1f", regionOriginZ))
+	
+	serverData.region = region
+	serverData.regionOriginPosition = Vector3.new(regionOriginX, serverData.region.Position.Y, regionOriginZ)
+	
+	-- Pellet Starting Offset
+	serverData.pelletStartPos = serverData.pelletSpacing/2
+	serverData.chunkTable = {}
+end
+
 --[[
 	Parameters: region, ix, iz
 	
@@ -117,8 +176,8 @@ function createChunk(region, ix, iz)
 	-- Create hash key for chunk based on stringified position
 	local chunkHash = generateHash(ix, iz)
 
-	local originX = regionOriginX + ix*serverData.chunkSize.X
-	local originZ = regionOriginZ + iz*serverData.chunkSize.Z
+	local originX = serverData.regionOriginX + ix*serverData.chunkSize.X
+	local originZ = serverData.regionOriginZ + iz*serverData.chunkSize.Z
 	local centerX = originX + serverData.chunkSize.X / 2
 	local centerZ = originZ + serverData.chunkSize.Z / 2
 	local centerYAboveRegion = region.Position.Y + serverData.chunkSize.Y/2
@@ -166,15 +225,19 @@ function spawnPelletsForChunk(chunkHash : string)
 			newPellet.ChunkHash = chunkHash
 			newPellet.Collected = false
 			
-			
 			-- Create an Entity inside the global ECS world
 			local pelletEntityID = authData.world:entity()
-			authData.world:set(pelletEntityID, Position, newPellet.Position)
-			authData.world:set(pelletEntityID, Collected, false)
-			authData.world:set(pelletEntityID, ChunkHash, chunkHash)
+			--print('spawnPelletsForChunk(): ', pelletEntityID, "\nserverData=\n", serverData, "\nnewPellet =\n", newPellet)
+			
+			authData.world:set(pelletEntityID, authData.Position, newPellet.Position)
+			authData.world:set(pelletEntityID, authData.Collected, false)
+			authData.world:set(pelletEntityID, authData.ChunkHash, chunkHash)
 			
 			-- Add Server Pellet's EntityID to send to Client
 			newPellet.ServerEntityID = pelletEntityID
+			
+			-- Add Entity ID to Server-Sided Lookup Table
+			authData.PelletEntityIDLookup[newPellet.ServerEntityID] = newPellet
 
 			-- Insert into chunkData world
 			table.insert(chunkData.worldData, newPellet)
@@ -197,16 +260,57 @@ function spawnChunksForRegion(region : Part)
 	end
 end
 
+-- Pellet Functions
+function CheckPelletValidity(ServerEntityID: number, character: Model)
+	if not character or not character:FindFirstChild('HumanoidRootPart') then return false end
+	local HumanoidRootPart = character.HumanoidRootPart :: Part
+	
+	local pelletPosition = authData.world:get(ServerEntityID, authData.Position)
+	local pelletCollected = authData.world:get(ServerEntityID, authData.Collected)
+	
+	-- Pellet Radius check
+	print('[PelletServer] Check Pellet Validity —> ', (pelletPosition - HumanoidRootPart.Position).Magnitude, pelletCollected)
+	--if (pelletPosition - HumanoidRootPart.Position).Magnitude > 10 then return false end
+	
+	-- Pellet Collected Check
+	return pelletCollected == false
+end
+
+function UpdateCollectedPellet_AuthData(ServerEntityID: number, player: Player)
+	-- Set Collected in JECS World
+	authData.world:set(ServerEntityID, authData.Collected, true)
+	
+	-- Set Collected in PelletData
+	local pelletData = authData.PelletEntityIDLookup[ServerEntityID]
+	pelletData.Collected = true
+	pelletData.CollectedBy = player.Name
+	
+	print('[PelletServer] Firing All Clients...')
+	-- Fire All Clients, Remove Pellet —> In PelletHandler
+	Remotes.UpdatePellet:FireAllClients(ServerEntityID)
+end
+
+InitializeAuthData()
+InitializeServerData(workspace:FindFirstChild('PelletRegion') :: Part)
 spawnChunksForRegion(serverData.region)
 
 
-InitializePellets.OnServerInvoke = function(player: Player)
+print('Server: InitializePellets.OnServerInvoke() created.')
+Remotes.InitializePellets.OnServerInvoke = function(player: Player)
 	return serverData
 end
 
-UpdatePellets.OnServerEvent:Connect(function(player: Player, ServerEntityID: number)
-	print('[Pellet] Server — UpdatePellets() — Player ', player.Name, ' collected Pellet.ServerEntityID = ', ServerEntityID)
-	local pelletPosition = authData.world:get(ServerEntityID, Position)
-	--print('Server — UpdatePellets() — Pellet\'s Position:', pelletPosition)
-	-- TODO: Remove Pellet
+Remotes.UpdatePellet.OnServerEvent:Connect(function(player: Player, ServerEntityID: number)
+	print('[PelletServer] Server — UpdatePellet() — Player ', player.Name, ' collected Pellet.ServerEntityID = ', ServerEntityID)
+	
+	-- Validate Pellet's Position / Collected
+	local pelletIsValid = CheckPelletValidity(ServerEntityID, player.Character)
+	print('[PelletServer] Pellet Is Valid = ', pelletIsValid)
+	if not pelletIsValid then return end
+	
+	
+	GameServerTable.UpdateScore:Fire(player, ServerEntityID)
+	print('[PelletServer] SCORE UPDATE:', player, GameServerTable.GetPlayerScore:Invoke(player) )
+	
+	UpdateCollectedPellet_AuthData(ServerEntityID, player)
 end)
