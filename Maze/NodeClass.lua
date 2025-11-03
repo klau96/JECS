@@ -4,8 +4,25 @@ nodeClass.startColor = Color3.new(0.950042, 0.894057, 0);
 nodeClass.normalColor = Color3.new(0.207843, 0.207843, 0.207843);
 nodeClass.highlightColor = Color3.new(0.934203, 0.13724, 0.254231);
 
+export type NodeClass = {
+	i:number,
+	j:number,
+	x:number,
+	y:number,
+	wallColor: Color3,
+	w: number,
+	boardW: number,
+	h: number,
+	stroke: number,
+	visited: boolean,
+	walls: {Part},
+	
+	-- Made optional, needs to wati for MazeServer
+	wallsFolder: Folder?,
+	regionOriginPosition: Vector3?,
+}
 
-function nodeClass.new(i, j, w, h, boardW)
+function nodeClass.new(i, j, w, h, boardW) : NodeClass
 	local self = setmetatable({}, nodeClass);
 	self.i = i;
 	self.j = j;
@@ -13,10 +30,10 @@ function nodeClass.new(i, j, w, h, boardW)
 	self.x = j * w;
 	self.y = i * w;
 	
-	self.wallColour = nodeClass.startColor;
+	self.wallColor = nodeClass.startColor;
 	
 	if self.x == w and self.y == w then
-		self.wallColour = nodeClass.normalColor
+		self.wallColor = nodeClass.normalColor
 	end
 	
 	self.w = w;
@@ -30,11 +47,11 @@ function nodeClass.new(i, j, w, h, boardW)
 	self.walls = {};
 	self.wallsFolder = nil
 	
-	self.regionOrigin = nil :: Vector3
+	self.regionOriginPosition = nil :: Vector3
 	return self;
 end
 
-function nodeClass:changeWallColours()
+function nodeClass:changeWallColors()
 	for i, v: BasePart in pairs(self.walls) do
 		v.Color = nodeClass.normalColor;
 		v.Material = Enum.Material.Slate
@@ -57,10 +74,11 @@ function nodeClass:createWall(size, position, name)
 	wall.Anchored = true;
 	wall.Name = name;
 	wall.Size = size;
-	wall.Position = position + self.regionOrigin - Vector3.new(self.w/2, 0, self.w/2);
+	
+	wall.Position = position + self.regionOriginPosition - Vector3.new(self.w/2, 0, self.w/2);
 	wall.CanCollide = true
 	wall.Parent = self.wallsFolder;
-	wall.Color = self.wallColour;
+	wall.Color = self.wallColor;
 	wall.Material = Enum.Material.SmoothPlastic;
 	table.insert(self.walls, wall);
 end
