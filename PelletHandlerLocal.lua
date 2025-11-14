@@ -122,16 +122,16 @@ function createLocalPellet(newPosition: Vector3, chunkHash: string)
 	light.Range = 12
 	light.Parent = pellet
 
-	-- Add to ECS
-	local pelletEntityID = serverData.world:entity() -- Returns the number of the entity
+	-- Add new pellet to Client World ECS
+	local clientEntityID = serverData.world:entity() -- Returns the number of the entity
 	
-	serverData.world:set(pelletEntityID, Pellet, true)
-	serverData.world:set(pelletEntityID, Position, newPosition)
-	serverData.world:set(pelletEntityID, Collected, false)
-	serverData.world:set(pelletEntityID, ChunkHash, chunkHash)
+	serverData.world:set(clientEntityID, Pellet, true)
+	serverData.world:set(clientEntityID, Position, newPosition)
+	serverData.world:set(clientEntityID, Collected, false)
+	serverData.world:set(clientEntityID, ChunkHash, chunkHash)
 
 	pellet.Parent = serverData.pelletFolder 
-	return pellet, pelletEntityID
+	return pellet, clientEntityID
 end
 
 function generateHash(posx, posz)
@@ -298,7 +298,7 @@ function pelletDetectionLoop()
 		-- Get Pellets around Player — Spatial query
 		local hitPellets = workspace:GetPartBoundsInRadius(hroot.Position, 6, IncludePelletFilterParams)
 		
-		if hitPellets then
+		if #hitPellets > 0 then
 			for i, item in pairs(hitPellets) do
 				-- Check if the PositionHash leads to any valid entity ID's
 				local positionHash = tostring(item.Position)
@@ -324,6 +324,7 @@ function pelletDetectionLoop()
 				serverData.world:set(clientEntityID, Collected, true)
 				
 				-- Send update to server
+				print('LOCAL pellet handler: sending to server: ', serverEntityID)
 				Remotes.UpdatePellet:FireServer(serverEntityID)
 				
 				-- Remove Pellet VFX
@@ -380,6 +381,10 @@ function SetupRemoteCalls()
 		--print('201 — ClientEntityID Found!  Position =', serverData.world:get(pelletData.ClientEntityID, Position))
 		
 		RemovePellet(pelletData)
+		
+		-- Set Collected value
+		pelletData.Collected = true
+		serverData.world:set(pelletData.ClientEntityID, Collected, true)
 	end)
 end
 
@@ -394,6 +399,7 @@ function init()
 	createFolderForPellets()
 	SetupFilterParams()
 	
+	-- Create data for all pellets
 	spawnChunksForRegion(serverData.region)
 	SetupRemoteCalls()
 	
