@@ -1,18 +1,21 @@
 -- Services
 local ReplicatedStorage = game:GetService('ReplicatedStorage')
+local ServerScriptService = game:GetService('ServerScriptService')
 local RunService = game:GetService('RunService')
 local Players = game:GetService('Players')
 
 -- Modules
-local jecs = require(ReplicatedStorage.Shared:WaitForChild('jecs'))
+local jecs = require(ReplicatedStorage.Shared.jecs)
 type Entity<T = nil> = jecs.Entity<T>
 
--- Remotes
+local Bindables = require(ServerScriptService.Modules.BindablesCollection)
+local Remotes = require(ReplicatedStorage.Modules.RemotesCollection)
 
-export type RemotesTable = {
-	InitializePellets: RemoteFunction,
-	UpdatePellet: RemoteEvent,
-}
+-- Remotes
+--export type RemotesTable = {
+--	InitializePellets: RemoteFunction,
+--	UpdatePellet: RemoteEvent,
+--}
 
 
 -- Data Structure Declarations
@@ -67,12 +70,6 @@ export type PelletData = {
 	CollectedBy: Player,
 }
 
--- Types — For Communicating to other Server scripts
-export type GameServerTable = {
-	GameServer: Script,
-	GetPlayerScore: BindableFunction?,
-	UpdateScore: BindableEvent?,
-}
 
 export type RemotesTable = {
 	InitialPellets: RemoteFunction,
@@ -81,10 +78,10 @@ export type RemotesTable = {
 
 
 -- Variables
-local Remotes: RemotesTable = {
-	InitializePellets = script:WaitForChild('InitializePellets') :: RemoteFunction,
-	UpdatePellet = script:WaitForChild('UpdatePellet') :: RemoteEvent,
-}
+--local Remotes: RemotesTable = {
+--	InitializePellets = script:WaitForChild('InitializePellets') :: RemoteFunction,
+--	UpdatePellet = script:WaitForChild('UpdatePellet') :: RemoteEvent,
+--}
 
 local authData = nil :: AuthoritativeData?
 local serverData: ServerData = {
@@ -95,14 +92,6 @@ local serverData: ServerData = {
 	chunkSize = Vector3.new(100, 10, 100),
 	chunkTable = {},
 	regionOriginPostion = nil
-}
-
-
-local GameServerInstance = workspace:WaitForChild('GameServer')
-local GameServerTable = {
-	GameServer = GameServerInstance,
-	GetPlayerScore = GameServerInstance:WaitForChild('GetPlayerScore') :: BindableFunction,
-	UpdateScore = GameServerInstance:WaitForChild('UpdateScore') :: BindableEvent,
 }
 
 --[[
@@ -200,7 +189,6 @@ end
 --[[
 	Parameters:
 		chunkHash : The indexes hashed specifically for the chunk
-		
 	Description:
 	
 ]]
@@ -287,7 +275,7 @@ function UpdateCollectedPellet_AuthData(ServerEntityID: number, player: Player)
 	
 	print('[PelletServer] Firing All Clients...')
 	-- Fire All Clients, Remove Pellet —> In PelletHandler
-	Remotes.UpdatePellet:FireAllClients(ServerEntityID)
+	Remotes.PelletServer.UpdatePellet:FireAllClients(ServerEntityID)
 end
 
 InitializeAuthData()
@@ -295,12 +283,11 @@ InitializeServerData(workspace:FindFirstChild('PelletRegion') :: Part)
 spawnChunksForRegion(serverData.region)
 
 
-print('Server: InitializePellets.OnServerInvoke() created.')
-Remotes.InitializePellets.OnServerInvoke = function(player: Player)
+Remotes.PelletServer.InitializePellets.OnServerInvoke = function(player: Player)
 	return serverData
 end
 
-Remotes.UpdatePellet.OnServerEvent:Connect(function(player: Player, ServerEntityID: number)
+Remotes.PelletServer.UpdatePellet.OnServerEvent:Connect(function(player: Player, ServerEntityID: number)
 	print('[PelletServer] Server — UpdatePellet() — Player ', player.Name, ' collected Pellet.ServerEntityID = ', ServerEntityID)
 	
 	-- Validate Pellet's Position / Collected
@@ -309,8 +296,8 @@ Remotes.UpdatePellet.OnServerEvent:Connect(function(player: Player, ServerEntity
 	if not pelletIsValid then return end
 	
 	
-	GameServerTable.UpdateScore:Fire(player, ServerEntityID)
-	print('[PelletServer] SCORE UPDATE:', player, GameServerTable.GetPlayerScore:Invoke(player) )
+	Bindables.GameServer.UpdateScore:Fire(player, ServerEntityID)
+	print('[PelletServer] SCORE UPDATE:', player, Bindables.GameServer.GetPlayerScore:Invoke(player) )
 	
 	UpdateCollectedPellet_AuthData(ServerEntityID, player)
 end)
