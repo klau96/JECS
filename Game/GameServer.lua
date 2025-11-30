@@ -6,40 +6,24 @@ local Players = game:GetService('Players')
 local Players2 = game:GetService('GeometryService')
 
 -- Modules
-local PlayerScoreModule = require(ServerScriptService.Server:WaitForChild('PlayerScore'))
-local PacmanScoreModule = require(ServerScriptService.Server:WaitForChild('PacmanScore'))
+local PlayerScoreModule = require(ServerScriptService.Server.PlayerScore)
+local PacmanScoreModule = require(ServerScriptService.Server.PacmanScore)
+local Bindables = require(ServerScriptService.Modules.BindablesCollection)
 
 -- Types
+local Types = require(ReplicatedStorage.Modules.Types)
+
 export type PlayerScore = typeof(PlayerScoreModule.new())
 export type PacmanScore = typeof(PacmanScoreModule.new())
 
-export type ScoreTable = {
-	PlayerList: {Player},
-	SurvivorList: {Player},
-	Pacman: Player?,
-	
-	PlayerScoreLookup: {
-		[string]: PlayerScore
-	},
-	PacmanScore: PacmanScore?,
-}
-
-export type Bindables = {
-	GetPlayerScore: BindableFunction,
-	UpdateScore: BindableEvent,
-}
-
 -- Variables
-local scoreTable = {} :: ScoreTable
-
-local bindables: Bindables = {
-	GetPlayerScore = script:WaitForChild('GetPlayerScore'),
-	UpdateScore = script:WaitForChild('UpdateScore')
-}
-
+local scoreTable = nil :: Types.ScoreTable
 
 function ClearScoreTable()
-	if scoreTable == nil then return end
+	if scoreTable == nil then 
+		print('[GameServer]: ERROR 404, scoreTable == nil check.')	
+		return
+	end
 	-- Check if there are entries
 	for i, v in pairs(scoreTable) do
 		table.clear(scoreTable)
@@ -48,7 +32,7 @@ function ClearScoreTable()
 end
 
 function InitializeScoreTable()
-	local newScoreTable: ScoreTable = {
+	local newScoreTable: Types.ScoreTable = {
 		PlayerList = {},
 		SurvivorList = {},
 		Pacman = nil,
@@ -86,6 +70,7 @@ function InitializeScores()
 end
 
 function CreateScoreTable()
+	print('[GameServer]: STARTING —> CreateScoreTable()')
 	ClearScoreTable()
 	scoreTable = InitializeScoreTable()
 	
@@ -95,10 +80,10 @@ function CreateScoreTable()
 	-- Create the list of survivors without Pacman
 	AddSurvivors()
 	
-	-- Use the module, create Scores
+	-- Use the module, create Scores types
 	InitializeScores()
 	
-	print("[GameServer]: ScoreTable = \n", scoreTable)
+	print("[GameServer]: FINISHED CreateScoreTable() —> ScoreTable = ", scoreTable)
 end
 
 function AddCollectedPelletAndScore(targetPlayerScore:PlayerScore, ServerEntityID)
@@ -109,17 +94,20 @@ function AddCollectedPelletAndScore(targetPlayerScore:PlayerScore, ServerEntityI
 end
 
 function CreateBindableFunctions()
-	bindables.UpdateScore.Event:Connect(function(player: Player, ServerEntityID: number)
+	
+	-- Only to be called by the PelletServer, which authenticates valid pellets
+	Bindables.GameServer.UpdateScore.Event:Connect(function(player: Player, ServerEntityID: number)
+		if not scoreTable then return end
 		print('[GameServer]: UpdateScore: received parameters = ', player, ServerEntityID)
 		if not scoreTable.PlayerScoreLookup[player.Name] then return false end
 		
 		local targetPlayerScore = scoreTable.PlayerScoreLookup[player.Name] :: PlayerScore
 		
 		AddCollectedPelletAndScore(targetPlayerScore, ServerEntityID)
-		
 	end)
 	
-	bindables.GetPlayerScore.OnInvoke = function(player: Player)
+	-- Called by: some server scripts (?)
+	Bindables.GameServer.GetPlayerScore.OnInvoke = function(player: Player)
 		print('[GameServer]: BINDABLE GetPlayerScore.OnInvoke() ->', player)
 		-- Check if player is pacman
 		if scoreTable.Pacman and scoreTable.Pacman == player then
@@ -133,20 +121,47 @@ function CreateBindableFunctions()
 		
 		return nil
 	end
-	print('[GameServer]: BINDABLE FUNCTIONS CREATED!')
+	
+	-- Called by : RoundSystem
+	Bindables.GameServer.StartGame.Event:Connect(function()
+		print('==== [GameServer]: GameServer.StartGame CALLED! ====')
+		Main()
+		print('==== [GameServer]: GameServer.StartGame FINISHED! ====')
+	end)
+end
+
+function Init()
+	CreateBindableFunctions()
 end
 
 -- Main
 function Main()
 	-- Receive an event from RoundSystem
 	-- Call the maze server script
+	
 	CreateScoreTable()
-	CreateBindableFunctions()
+	
+	-- Call Bindable to generate maze
+	print('[GameServer]: CALLING: MazeServer.GenerateMaze()...')
+	local mazeInfo = Bindables.MazeServer.GenerateMaze:Invoke(scoreTable) :: Types.MazeInformation
+	print("[GameServer]: GenerateMaze() Completed! -> ", mazeInfo)
+	
+	print('TELEPORT: Beginning For-loop')
+	for i, node: Types.NodeInfo in pairs(mazeInfo.Corners) do
+		print('Setting ininja966 to', node.CenterPosition)
+		game.Players.ininja966.Character.HumanoidRootPart.CFrame = CFrame.new(node.CenterPosition)
+		task.wait(1)
+	end 
+	
+	game.Players.ininja966.Character.HumanoidRootPart.CFrame = CFrame.new(mazeInfo.PacmanSpawnPosition.CenterPosition)
 end
 
-repeat task.wait() until #Players:GetPlayers() >= 4
+Init()
 
-task.wait(1)
+repeat task.wait() until #Players:GetPlayers() >= 1
 
-print('==== GameServer: GAME STARTING ====')
-Main()
+--task.wait(1)
+
+--print('==== [GameServer]: GAME STARTING ====')
+--Main()
+--print('==== [GameServer]: GAME MAIN() OPERATIONS ENDED! ====')
