@@ -11,6 +11,10 @@ type Entity<T = nil> = jecs.Entity<T>
 local Bindables = require(ServerScriptService.Modules.BindablesCollection)
 local Remotes = require(ReplicatedStorage.Modules.RemotesCollection)
 
+-- Shared Modules
+local world = require(game:GetService("ReplicatedStorage").Shared.world)
+local Components = require(ReplicatedStorage.Shared.components)
+
 -- Remotes
 --export type RemotesTable = {
 --	InitializePellets: RemoteFunction,
@@ -116,10 +120,15 @@ end
 
 function InitializeAuthData()
 	authData = {} :: AuthoritativeData
-	authData.world = jecs.world()
+	-- TODO: Validate whether components module integration is successful
+	--authData.world = jecs.world()
+	authData.world = world -- Server-shared World from -> ReplicatedStorage.Shared.World
+	
 	
 	-- Initialize Jecs Components to the World
-	authData.Pellet = authData.world:component() :: Entity<Part>
+	--authData.Pellet = authData.world:component() :: Entity<Part>
+	-- Removed: not necessary in server. Pellet Instances are client-generated
+	
 	authData.Position = authData.world:component() :: Entity<Vector3>
 	authData.ChunkHash = authData.world:component() :: Entity<string>
 	authData.Collected = authData.world:component() :: Entity<boolean>
@@ -127,10 +136,15 @@ function InitializeAuthData()
 	authData.PelletEntityIDLookup = {}
 end
 
-function CleanUpAuthData()
+function CleanupAuthData()
 	for id in authData.world:entities():iter() do
 		authData.world:remove(id)
 	end
+end
+
+function CleanupServerData()
+	-- Garbage collection removes the previous table, which has no "strong variable reference" to it
+	serverData.chunkTable = {}
 end
 
 function InitializeServerData(region: Part)
