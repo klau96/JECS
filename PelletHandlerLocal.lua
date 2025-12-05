@@ -11,21 +11,22 @@ local hroot = character:WaitForChild('HumanoidRootPart') :: Part
 
 -- Modules
 local SoundModule = require(ReplicatedStorage.Modules:WaitForChild('Sound'))
+local Remotes = require(ReplicatedStorage.Modules:WaitForChild('RemotesCollection'))
 
 -- Server
 local PelletServer = workspace:FindFirstChild('PelletServer') :: Script
 
 
 -- Remote Events
-export type RemotesTable = {
-	InitializePellets: RemoteFunction,
-	UpdatePellet: RemoteEvent,
-}
+--export type RemotesTable = {
+--	InitializePellets: RemoteFunction,
+--	UpdatePellet: RemoteEvent,
+--}
 
-local Remotes: RemotesTable = {
-	InitializePellets = PelletServer:FindFirstChild('InitializePellets') :: RemoteFunction,
-	UpdatePellet = PelletServer:FindFirstChild('UpdatePellet') :: RemoteEvent,
-}
+--local Remotes: RemotesTable = {
+--	InitializePellets = PelletServer:FindFirstChild('InitializePellets') :: RemoteFunction,
+--	UpdatePellet = PelletServer:FindFirstChild('UpdatePellet') :: RemoteEvent,
+--}
 
 -- Data
 local serverData = nil :: ServerData
@@ -317,19 +318,19 @@ function pelletDetectionLoop()
 				--print('> 201 — ClientEntityID Found!  Position =', serverData.world:get(clientEntityID, Position))
 				
 				local serverEntityID = pelletData.ServerEntityID
-				print('[PelletHandler]: Client — UpdatePellet(): Sending ServerEntityID =', serverEntityID)
+				print('{LOCAL} —> [PelletHandler]: Client — UpdatePellet(): Sending ServerEntityID =', serverEntityID)
 				
 				-- Set Collected value
 				pelletData.Collected = true
 				serverData.world:set(clientEntityID, Collected, true)
 				
 				-- Send update to server
-				print('LOCAL pellet handler: sending to server: ', serverEntityID)
-				Remotes.UpdatePellet:FireServer(serverEntityID)
+				--print('{LOCAL} —>  pellet handler: sending to server: ', serverEntityID)
+				Remotes.PelletServer.UpdatePellet:FireServer(serverEntityID)
 				
 				-- Remove Pellet VFX
 				RemovePellet(pelletData)
-				print('> [PelletHandler]: Client — Collected PelletData = ', pelletData)
+				print('{LOCAL} —> [PelletHandler]: Client — Collected PelletData = ', pelletData)
 				--CleanupPelletReferences(pelletData)
 
 				-- TODO (Server): Receive Pellet, Track pellets collected
@@ -367,12 +368,16 @@ function SetupServerData()
 end
 
 function SetupRemoteCalls()
-	Remotes.UpdatePellet.OnClientEvent:Connect(function(ServerEntityID: number)
+	Remotes.PelletServer.UpdatePellet.OnClientEvent:Connect(function(ServerEntityID: number)
+		if not serverData then
+			print('{LOCAL} —> [PelletHandler]')
+			return false
+		end
 		-- Check if the Pellet exists and has not been collected
 		local pelletData = serverData.pelletServerIDLookup[ServerEntityID]
-		print('[PelletHandler] UpdatePellet EVENT RECEIVED: PelletData[',ServerEntityID,'] = ', pelletData)
+		print('{LOCAL} —> [PelletHandler] UpdatePellet EVENT RECEIVED: PelletData[',ServerEntityID,'] = ', pelletData)
 		if not pelletData or pelletData.Collected == true then 
-			print('[PelletHandler]: ERROR 404 — UpdatePellet, PelletData for ServerEntityID =', ServerEntityID, ' — Error 404!')
+			--print('[PelletHandler]: ERROR 404 — UpdatePellet, PelletData for ServerEntityID =', ServerEntityID, ' — Error 404!')
 			return 
 		end
 		
@@ -386,29 +391,31 @@ function SetupRemoteCalls()
 		pelletData.Collected = true
 		serverData.world:set(pelletData.ClientEntityID, Collected, true)
 	end)
+	
+	Remotes.PelletServer.InitializePellets.OnClientEvent:Connect(function(ReceivedServerData: ServerData)
+		print('{LOCAL} —> [PelletHandler]: serverData received = ', ReceivedServerData)
+		init(ReceivedServerData)
+	end)
 end
 
 
 -- Main
-function init()
+function init(ReceivedServerData: ServerData)
 	print('Local: PelletHandler -> Init() called!')
-	serverData = Remotes.InitializePellets:InvokeServer() :: ServerData
+	serverData = ReceivedServerData
 	
-	print('Local: serverData received = ', serverData)
 	SetupServerData()
 	createFolderForPellets()
 	SetupFilterParams()
 	
 	-- Create data for all pellets
 	spawnChunksForRegion(serverData.region)
-	SetupRemoteCalls()
+	--SetupRemoteCalls()
 	
 	pelletDetectionLoop()
 end
 
-task.wait(1)
-
-init()
+SetupRemoteCalls()
 
 
 --for id, pellet, pos : Vector3 in cache:iter() do
