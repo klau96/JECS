@@ -377,7 +377,13 @@ function GetMazeInformation()
 	
 	-- Select the random corner for pacman
 	local pacmanCornerIndex = math.random(1, #mazeInfo.Corners)
-	mazeInfo.PacmanSpawnNode = mazeInfo.Corners[pacmanCornerIndex]
+	mazeInfo.PacmanCornerIndex = pacmanCornerIndex
+	mazeInfo.PacmanSpawnNode = mazeInfo.Corners[mazeInfo.PacmanCornerIndex]
+	
+	mazeInfo.SurvivorCorners = table.clone(mazeInfo.Corners)
+	table.remove(mazeInfo.SurvivorCorners, mazeInfo.PacmanCornerIndex)
+	
+	print('[MazeServer] CORNER CHECK:', mazeInfo.Corners, mazeInfo.SurvivorCorners, mazeInfo.PacmanSpawnNode.CenterPosition)
 	
 	return mazeInfo
 end

@@ -133,11 +133,7 @@ function AddCollectedPelletAndScore(targetPlayerScore: PlayerScore, ServerEntity
 end
 
 function SpawnSurvivors()
-	-- Create a temporary array, remove pacman spawn node
-	local survivorCorners = table.clone(serverData.mazeInfo.Corners)
-	local pacmanSpawnNodeIndex = table.find(survivorCorners, serverData.mazeInfo.PacmanSpawnNode)
-	table.remove(survivorCorners, pacmanSpawnNodeIndex)
-	print('[GameServer] Checking both CORNER TABLES: \n\n', serverData.mazeInfo.Corners, survivorCorners, serverData.mazeInfo.PacmanSpawnNode)
+	local survivorCorners = serverData.mazeInfo.SurvivorCorners
 	
 	-- Loop through players, spawn at alternating corners
 	local i = 1
@@ -212,7 +208,6 @@ function Init()
 	CreateBindableFunctions()
 end
 
--- Main
 function Main()
 	-- Receive an event from RoundSystem
 	
