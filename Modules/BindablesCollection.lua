@@ -10,9 +10,15 @@ local ScriptList = {
 }
 
 export type GameServer_Bindables = {
-	GetPlayerScore: BindableFunction,
-	UpdateScore: BindableEvent,
-	StartGame: BindableEvent,
+	GetPlayerScore 	: BindableFunction,
+	UpdateScore 	: BindableEvent,
+	StartGame 		: BindableEvent,
+	
+	MazeReady 		: BindableEvent,
+	RoundAnnounce 	: BindableEvent,
+	RoundOver 		: BindableEvent,
+	RoundPhase		: BindableEvent,
+	RoundTimer		: BindableEvent,
 }
 
 export type MazeServer_Bindables = {
@@ -39,6 +45,7 @@ bindables = {
 		UpdateScore = ScriptList.GameServer:WaitForChild('UpdateScore') :: BindableEvent,
 		StartGame = ScriptList.GameServer:WaitForChild('StartGame') :: BindableEvent,
 		
+		-- Used in Round System
 		MazeReady= ScriptList.GameServer:WaitForChild('MazeReady') :: BindableEvent,
 		RoundAnnounce = ScriptList.GameServer:WaitForChild('RoundAnnounce') :: BindableEvent,
 		RoundOver = ScriptList.GameServer:WaitForChild('RoundOver') :: BindableEvent,
