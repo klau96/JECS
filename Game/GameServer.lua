@@ -10,6 +10,9 @@ local PlayerScoreModule = require(ServerScriptService.Server.PlayerScore)
 local PacmanScoreModule = require(ServerScriptService.Server.PacmanScore)
 local Bindables = require(ServerScriptService.Modules.BindablesCollection)
 
+local world = require(ReplicatedStorage.Shared.world)
+local C = require(ReplicatedStorage.Shared.components)
+
 -- Types
 local Types = require(ReplicatedStorage.Modules.Types)
 
@@ -17,6 +20,7 @@ export type PlayerScore = typeof(PlayerScoreModule.new())
 export type PacmanScore = typeof(PacmanScoreModule.new())
 
 -- Variables
+local serverData = nil :: Types.GameServerData
 local scoreTable = nil :: Types.ScoreTable
 
 function ClearScoreTable()
@@ -41,6 +45,41 @@ function InitializeScoreTable()
 	}
 	
 	return newScoreTable
+end
+
+function InitializeGameServerData(newMazeInfo: Types.MazeInformation)
+	serverData = {
+		mazeInfo = newMazeInfo
+	} :: Types.GameServerData
+end
+
+local function ApplyRoles()
+	if not scoreTable then return end
+	
+	local pacmanPlr = scoreTable.Pacman
+	if not pacmanPlr then return end
+	
+	for id, plr in world:query(C.Player.PlayerRef):iter() do
+		if plr == pacmanPlr then
+			world:set(id, C.Role.playerType, "Pacman")
+		else
+			world:set(id, C.Role.playerType, "Ghost")
+		end
+		
+		world:set(id, C.Role.Alive, true)
+	end
+end
+
+local function PacmanMorph()
+	if not scoreTable or not scoreTable.Pacman then return end
+	local pacmanPlr = scoreTable.Pacman
+	
+	for e, plr, role in world:query(C.Player.PlayerRef, C.Role.playerType):iter() do
+		if plr == pacmanPlr and role == "Pacman" then
+			world:set(e, C.Morph.Request, "ToPacman")
+			world:set(e, C.Morph.IsPacman, true)
+		end
+	end
 end
 
 function SelectPacman()
@@ -86,11 +125,46 @@ function CreateScoreTable()
 	print("[GameServer]: FINISHED CreateScoreTable() —> ScoreTable = ", scoreTable)
 end
 
-function AddCollectedPelletAndScore(targetPlayerScore:PlayerScore, ServerEntityID)
+function AddCollectedPelletAndScore(targetPlayerScore: PlayerScore, ServerEntityID)
 	-- Insert Entity ID to Array of pellets
 	table.insert(targetPlayerScore.PelletsCollected, ServerEntityID)
 	-- Add to value
 	targetPlayerScore.Value = targetPlayerScore.Value + 100
+end
+
+function SpawnSurvivors()
+	-- Create a temporary array, remove pacman spawn node
+	local survivorCorners = table.clone(serverData.mazeInfo.Corners)
+	local pacmanSpawnNodeIndex = table.find(serverData.mazeInfo.Corners, serverData.mazeInfo.PacmanSpawnNode)
+	table.remove(survivorCorners, pacmanSpawnNodeIndex)
+	
+	-- Loop through players, spawn at alternating corners
+	local i = 1
+	for _, survivor in ipairs(scoreTable.SurvivorList) do
+		local hr = survivor.Character:FindFirstChild("HumanoidRootPart")
+		-- humanoid root part check
+		if not hr then 
+			print("> ERROR [GameServer]: Survivor does not have humanoid root part!") 
+			continue 
+		end
+		
+		-- Send humanoid root part to corner
+		local targetCorner = serverData.mazeInfo.Corners[i]
+		hr.CFrame = CFrame.new(targetCorner.CenterPosition)
+		
+		-- Iterate i, which is the target corner index
+		-- 	Reason: 
+		-- 		This is only the case if there are 4 or more players
+		--		Multiple players will spawn at the same corner
+		i += 1
+		if i > #serverData.mazeInfo.Corners then
+			i = 1
+		end
+	end
+end
+
+function SpawnPacman()
+	
 end
 
 function CreateBindableFunctions()
@@ -103,6 +177,7 @@ function CreateBindableFunctions()
 		
 		local targetPlayerScore = scoreTable.PlayerScoreLookup[player.Name] :: PlayerScore
 		
+		print('[GameServer]: Found Player Score: ', targetPlayerScore)
 		AddCollectedPelletAndScore(targetPlayerScore, ServerEntityID)
 	end)
 	
@@ -137,23 +212,39 @@ end
 -- Main
 function Main()
 	-- Receive an event from RoundSystem
-	-- Call the maze server script
 	
+	-- Create a new score table
 	CreateScoreTable()
+	
+	-- Set Maze Region
+	local mazeRegion = workspace:FindFirstChild('MazeRegion') :: BasePart
+	
+	-- Call Bindable to spawn pellets — Send in MazeRegion
+	Bindables.PelletServer.SpawnPellets:Invoke(mazeRegion)
 	
 	-- Call Bindable to generate maze
 	print('[GameServer]: CALLING: MazeServer.GenerateMaze()...')
-	local mazeInfo = Bindables.MazeServer.GenerateMaze:Invoke(scoreTable) :: Types.MazeInformation
+	local mazeInfo = Bindables.MazeServer.GenerateMaze:Invoke(scoreTable, mazeRegion) :: Types.MazeInformation
 	print("[GameServer]: GenerateMaze() Completed! -> ", mazeInfo)
 	
-	print('TELEPORT: Beginning For-loop')
+	-- Step —> UPDATE: GameServer's ServerData variable
+	InitializeGameServerData(mazeInfo)
+	
+	-- Set Roles / Characters
+	ApplyRoles() -- apply the "Ghost" and "Pacman" role from components
+	PacmanMorph() -- morph Pacman
+	
+	-- Spawn Survivors in Corners that are NOT pacman's corner
+	SpawnSurvivors()
+	SpawnPacman()
+	
 	for i, node: Types.NodeInfo in pairs(mazeInfo.Corners) do
 		print('Setting ininja966 to', node.CenterPosition)
 		game.Players.ininja966.Character.HumanoidRootPart.CFrame = CFrame.new(node.CenterPosition)
 		task.wait(1)
 	end 
 	
-	game.Players.ininja966.Character.HumanoidRootPart.CFrame = CFrame.new(mazeInfo.PacmanSpawnPosition.CenterPosition)
+	game.Players.ininja966.Character.HumanoidRootPart.CFrame = CFrame.new(mazeInfo.PacmanSpawnNode.CenterPosition)
 end
 
 Init()
