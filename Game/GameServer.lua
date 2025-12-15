@@ -155,9 +155,8 @@ function SpawnSurvivors()
 		hr.CFrame = CFrame.new(targetCorner.CenterPosition)
 		
 		-- Iterate i, which is the target corner index
-		-- 	Reason: 
-		-- 		This is only the case if there are 4 or more players
-		--		Multiple players will spawn at the same corner
+		-- 	This is only the case if there are 4 or more players
+		--	Multiple players can spawn at the same corner
 		i += 1
 		if i > #survivorCorners then
 			i = 1
@@ -242,22 +241,8 @@ function Main()
 	task.wait(10)
 	SpawnSurvivors()
 	SpawnPacman()
-	
-	--for i, node: Types.NodeInfo in pairs(mazeInfo.Corners) do
-	--	print('Setting ininja966 to', node.CenterPosition)
-	--	game.Players.ininja966.Character.HumanoidRootPart.CFrame = CFrame.new(node.CenterPosition)
-	--	task.wait(1)
-	--end 
-	
-	--game.Players.ininja966.Character.HumanoidRootPart.CFrame = CFrame.new(mazeInfo.PacmanSpawnNode.CenterPosition)
 end
 
 Init()
 
-repeat task.wait() until #Players:GetPlayers() >= 1
-
---task.wait(1)
-
---print('==== [GameServer]: GAME STARTING ====')
---Main()
---print('==== [GameServer]: GAME MAIN() OPERATIONS ENDED! ====')
+repeat task.wait() until #Players:GetPlayers() >= 2
