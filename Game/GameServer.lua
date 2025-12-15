@@ -243,6 +243,5 @@ function Main()
 	SpawnPacman()
 end
 
-Init()
 
-repeat task.wait() until #Players:GetPlayers() >= 2
+Init()
