@@ -12,7 +12,11 @@ local nodeClass = require(script.NodeClass);
 local stackModule = require(script.Stack);
 local PointerModule = require(script:WaitForChild('Pointer'));
 
+local Bindables = require(ServerScriptService.Modules:WaitForChild('BindablesCollection'))
+
 -- Types
+local Types = require(ReplicatedStorage.Modules.Types)
+
 export type NodeClass = typeof(nodeClass.new())
 export type Pointer = typeof(PointerModule.new())
 
@@ -35,18 +39,30 @@ local Settings: MazeSettings = {
 	h = 60,
 }
 
-local ServerData: MazeServerData = {
-	nodes = {},
-	pointer = nil,
-	region = nil,
-	regionOriginPosition = nil,
-}
+--local ServerData: MazeServerData = {
+--	nodes = {},
+--	pointer = nil,
+--	region = nil,
+--	regionOriginPosition = nil,
+--}
+local ServerData: MazeServerData = nil;
 
 -- Extra
 local SoundModule = require(ReplicatedStorage.Modules:WaitForChild('Sound'))
 
-function InitializeMazeRegion()
-	ServerData.region = workspace.PelletRegion
+function InitializeServerData()
+	-- initialize ServerData
+	ServerData = {
+		nodes = {},
+		pointer = nil,
+		region = nil,
+		regionOriginPosition = nil,
+	} :: MazeServerData
+end
+
+function InitializeMazeRegion(mazeRegion)
+	--ServerData.region = workspace.PelletRegion
+	ServerData.region = mazeRegion
 	local regionOriginX = ServerData.region.Position.X - ServerData.region.Size.X/2
 	local regionOriginZ = ServerData.region.Position.Z - ServerData.region.Size.Z/2
 	ServerData.regionOriginPosition = Vector3.new(regionOriginX, ServerData.region.Position.Y, regionOriginZ)
@@ -134,6 +150,7 @@ function calculateMaze()
 	nodeStack:push(current);
 	
 	-- Initialize the Pointer
+	print('[MazeServer] Pointer about to be created!')
 	ServerData.pointer = PointerModule.new(Settings.cellW, Settings.h) :: Pointer
 	ServerData.pointer:createPointerInstance()
 	
@@ -151,8 +168,8 @@ function calculateMaze()
 			removeWalls(current, neighbor);
 			neighbor.visited = true;
 			nodeStack:push(neighbor);
+			task.wait()
 		end
-		task.wait()
 	end
 end
 
@@ -172,7 +189,7 @@ function findRandomNodeIndex()
 end
 
 function removeWallFromTargetNode(targetIndex: number)
-	-- function that is ran post-maze-generation
+	-- function runs after maze-generation
 	local targetNode = ServerData.nodes[targetIndex]
 	--targetIndex = findRandomNodeIndex()
 	
@@ -216,9 +233,9 @@ function removeWallFromTargetNode(targetIndex: number)
 		end
 		--print(string.format("Nodes: (%d, %d) —> Do walls exist? = %s", targetIndex, nextIndex, tostring(wallsExist)) )
 		
-		task.wait()
+		-- Condition: Break infinite loop if no valid passage walls exist
 		checkCounter = checkCounter + 1
-		if checkCounter > 16 then
+		if checkCounter > 2 then
 			print('checkCounter reached 16! Returning false...')
 			return false
 		end
@@ -316,20 +333,81 @@ function generateRandomPassages()
 	end
 end
 
+function MazeInformation_GetNodePosition(i, j)
+	-- Uses: Settings, ServerData
+	local centerx = i*Settings.cellW - Settings.cellW/2
+	local y = 3
+	local centerz = j*Settings.cellW - Settings.cellW/2
+	local centerPos = Vector3.new(centerx, y, centerz) 
+	
+	return centerPos + ServerData.regionOriginPosition
+end
 
-InitializeMazeRegion();
-InitializeNodeClass();
+function GetMazeInformation()
+	-- Creates a Types.MazeInformation
+	-- Which then holds Corner information with Types.NodeInfo
+	
+	local mazeInfo: Types.MazeInformation = {
+		Corners = {},
+		PacmanSpawnNode = nil,
+		PacmanCornerIndex = nil,
+	}
+	local ivalues = {1, Settings.boardW}
+	local jvalues = {1, Settings.boardW}
+	
+	-- Create Corners Information through NodeInfo objects
+	for _, i in ipairs(ivalues) do
+		for _, j in ipairs(jvalues) do
+			local nodeInfo = {} :: Types.NodeInfo
+			nodeInfo.CenterPosition = MazeInformation_GetNodePosition(i, j)
+			nodeInfo.i = i
+			nodeInfo.j = j
+			
+			table.insert(mazeInfo.Corners, nodeInfo)
+		end
+	end
+	
+	-- TEMP: Create the Center maze Pacman spawn position
+	
+	--local pacmanNode = {} :: Types.NodeInfo
+	--pacmanNode.i = math.floor(Settings.boardW/2)
+	--pacmanNode.j = math.floor(Settings.boardW/2)
+	--pacmanNode.CenterPosition = MazeInformation_GetNodePosition(pacmanNode.i, pacmanNode.j)
+	--mazeInfo.PacmanSpawnNode = pacmanNode.CenterPosition
+	
+	-- Select the random corner for pacman
+	local pacmanCornerIndex = math.random(1, #mazeInfo.Corners)
+	mazeInfo.PacmanSpawnNode = mazeInfo.Corners[pacmanCornerIndex]
+	
+	return mazeInfo
+end
 
-task.wait(1);
-createNewMaze();
-calculateMaze();
-print("--------------------------")
+-- Bindables
+function CreateBindableFunctions()
+	--------------------------------------------
+	Bindables.MazeServer.GenerateMaze.OnInvoke = function(scoreTable: Types.ScoreTable, mazeRegion: Part)
+		print("MazeServer.GenerateMaze.OnInvoke() -> ", scoreTable)
+		InitializeServerData();
+		InitializeMazeRegion(mazeRegion);
+		InitializeNodeClass();
+		
+		task.wait(1);
+		createNewMaze();
+		calculateMaze();
 
+		resetVisitedNodes()
 
-resetVisitedNodes()
+		generateUniformPassages()
+		generateRandomPassages()
 
-generateUniformPassages()
-generateRandomPassages()
+		resetPointer()
+		changeAllPassageColors()
+		
+		local mazeInfo = GetMazeInformation() -- Corner Positions are in Types.NodeInfo
+		
+		return mazeInfo :: Types.MazeInformation
+	end
+	--------------------------------------------
+end
 
-resetPointer()
-changeAllPassageColors()
+CreateBindableFunctions()
