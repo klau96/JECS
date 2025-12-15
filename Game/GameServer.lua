@@ -135,8 +135,9 @@ end
 function SpawnSurvivors()
 	-- Create a temporary array, remove pacman spawn node
 	local survivorCorners = table.clone(serverData.mazeInfo.Corners)
-	local pacmanSpawnNodeIndex = table.find(serverData.mazeInfo.Corners, serverData.mazeInfo.PacmanSpawnNode)
+	local pacmanSpawnNodeIndex = table.find(survivorCorners, serverData.mazeInfo.PacmanSpawnNode)
 	table.remove(survivorCorners, pacmanSpawnNodeIndex)
+	print('[GameServer] Checking both CORNER TABLES: \n\n', serverData.mazeInfo.Corners, survivorCorners, serverData.mazeInfo.PacmanSpawnNode)
 	
 	-- Loop through players, spawn at alternating corners
 	local i = 1
@@ -144,12 +145,13 @@ function SpawnSurvivors()
 		local hr = survivor.Character:FindFirstChild("HumanoidRootPart")
 		-- humanoid root part check
 		if not hr then 
-			print("> ERROR [GameServer]: Survivor does not have humanoid root part!") 
+			print("> ERROR [GameServer]: Survivor ", survivor.Name, " does not have humanoid root part!") 
 			continue 
 		end
 		
 		-- Send humanoid root part to corner
-		local targetCorner = serverData.mazeInfo.Corners[i]
+		local targetCorner = survivorCorners[i]
+		print('[GameServer] SURVIVOR CORNERS: ', i, targetCorner)
 		hr.CFrame = CFrame.new(targetCorner.CenterPosition)
 		
 		-- Iterate i, which is the target corner index
@@ -157,14 +159,16 @@ function SpawnSurvivors()
 		-- 		This is only the case if there are 4 or more players
 		--		Multiple players will spawn at the same corner
 		i += 1
-		if i > #serverData.mazeInfo.Corners then
+		if i > #survivorCorners then
 			i = 1
 		end
 	end
 end
 
 function SpawnPacman()
-	
+	local hr = scoreTable.Pacman.Character:FindFirstChild('HumanoidRootPart')
+	local pacmanSpawnNode = serverData.mazeInfo.PacmanSpawnNode :: Types.NodeInfo
+	hr.CFrame = CFrame.new(pacmanSpawnNode.CenterPosition)
 end
 
 function CreateBindableFunctions()
@@ -235,16 +239,17 @@ function Main()
 	PacmanMorph() -- morph Pacman
 	
 	-- Spawn Survivors in Corners that are NOT pacman's corner
+	task.wait(10)
 	SpawnSurvivors()
 	SpawnPacman()
 	
-	for i, node: Types.NodeInfo in pairs(mazeInfo.Corners) do
-		print('Setting ininja966 to', node.CenterPosition)
-		game.Players.ininja966.Character.HumanoidRootPart.CFrame = CFrame.new(node.CenterPosition)
-		task.wait(1)
-	end 
+	--for i, node: Types.NodeInfo in pairs(mazeInfo.Corners) do
+	--	print('Setting ininja966 to', node.CenterPosition)
+	--	game.Players.ininja966.Character.HumanoidRootPart.CFrame = CFrame.new(node.CenterPosition)
+	--	task.wait(1)
+	--end 
 	
-	game.Players.ininja966.Character.HumanoidRootPart.CFrame = CFrame.new(mazeInfo.PacmanSpawnNode.CenterPosition)
+	--game.Players.ininja966.Character.HumanoidRootPart.CFrame = CFrame.new(mazeInfo.PacmanSpawnNode.CenterPosition)
 end
 
 Init()
